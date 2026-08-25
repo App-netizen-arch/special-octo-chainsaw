@@ -1,0 +1,204 @@
+/**
+ * Claude Agents Provider
+ * To be used with the Claude Agent SDK (@anthropic-ai/claude-agent-sdk)
+ *
+ * This provider enables integration with Claude Code Agents SDK,
+ * allowing Composio tools to be used as MCP tools within Claude agents.
+ *
+ * @packageDocumentation
+ * @module providers/claude-agents
+ */
+import {
+  BaseAgenticProvider,
+  Tool,
+  ExecuteToolFn,
+  McpUrlResponse,
+  McpServerGetResponse,
+  normalizeToolArguments,
+  jsonSchemaToZodSchema,
+} from '@composio/core';
+import {
+  tool as sdkTool,
+  type Options as ClaudeAgentOptions,
+} from '@anthropic-ai/claude-agent-sdk';
+
+/**
+ * Type for a single Claude Agent SDK MCP tool definition
+ */
+export type ClaudeAgentTool = ReturnType<typeof sdkTool>;
+
+/**
+ * Type for a collection of Claude Agent SDK MCP tools
+ */
+export type ClaudeAgentToolCollection = ClaudeAgentTool[];
+
+/**
+ * Provider for integrating Composio tools with Claude Code Agents SDK.
+ *
+ * This provider wraps Composio tools as MCP tools that can be used with
+ * the Claude Agent SDK's `query()` function via the `mcpServers` option.
+ *
+ * @example
+ * ```typescript
+ * import { Composio } from '@composio/core';
+ * import { ClaudeAgentSDKProvider } from '@composio/claude-agent-sdk';
+ * import { query, createSdkMcpServer } from '@anthropic-ai/claude-agent-sdk';
+ *
+ * const composio = new Composio({
+ *   apiKey: process.env.COMPOSIO_API_KEY,
+ *   provider: new ClaudeAgentSDKProvider(),
+ * });
+ *
+ * // Get tools and create MCP server config using claude-agent-sdk's `createSdkMcpServer`
+ * const tools = await composio.tools.get('default', 'GMAIL_SEND_EMAIL');
+ * const mcpServer = createSdkMcpServer({
+ *   name: 'composio',
+ *   version: '1.0.0',
+ *   tools,
+ * });
+ *
+ * // Use with Claude Agent SDK
+ * for await (const message of query({
+ *   prompt: 'Send an email',
+ *   options: {
+ *     mcpServers: { composio: mcpServer },
+ *   },
+ * })) {
+ *   console.log(message);
+ * }
+ * ```
+ */
+export class ClaudeAgentSDKProvider extends BaseAgenticProvider<
+  ClaudeAgentToolCollection,
+  ClaudeAgentTool,
+  McpServerGetResponse
+> {
+  readonly name = 'claude-agent-sdk';
+
+  /**
+   * Wraps a Composio tool as a Claude Agent SDK MCP tool.
+   *
+   * @param composioTool - The Composio tool to wrap
+   * @param executeTool - Function to execute the tool
+   * @returns A Claude Agent SDK MCP tool definition
+   *
+   * @example
+   * ```typescript
+   * const composioTool = {
+   *   slug: 'GMAIL_SEND_EMAIL',
+   *   description: 'Send an email via Gmail',
+   *   inputParameters: {
+   *     type: 'object',
+   *     properties: {
+   *       to: { type: 'string', description: 'Recipient email' },
+   *       subject: { type: 'string', description: 'Email subject' },
+   *       body: { type: 'string', description: 'Email body' },
+   *     },
+   *     required: ['to', 'subject', 'body'],
+   *   },
+   * };
+   *
+   * const mcpTool = provider.wrapTool(composioTool, executeFn);
+   * ```
+   */
+  wrapTool(composioTool: Tool, executeTool: ExecuteToolFn): ClaudeAgentTool {
+    // Register the complete object schema rather than its raw property shape. A raw shape is only
+    // the per-property map, so every root-level constraint — `additionalProperties`, whether
+    // boolean or schema-valued, and `patternProperties` — is structurally unrepresentable and gets
+    // dropped at registration. The SDK then silently strips unknown keys instead of rejecting them,
+    // and free-form roots lose the content they exist to carry.
+    //
+    // A tool with no input parameters stays closed: the fallback spells out
+    // `additionalProperties: false`, because a bare `properties: {}` is now an open object.
+    const inputZodSchema = jsonSchemaToZodSchema(
+      composioTool.inputParameters ?? {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      }
+    );
+
+    // The SDK runtime accepts a complete schema, but `tool()` only exposes the raw-shape type, and
+    // that generic signature also makes the handler argument instantiate excessively deep (TS2589).
+    // Narrow it to a concrete, monomorphic signature once, instead of scattering casts at the call.
+    const defineTool = sdkTool as unknown as (
+      name: string,
+      description: string,
+      inputSchema: ReturnType<typeof jsonSchemaToZodSchema>,
+      handler: (
+        args: Record<string, unknown>
+      ) => Promise<{ content: Array<{ type: 'text'; text: string }> }>
+    ) => ClaudeAgentTool;
+
+    return defineTool(
+      composioTool.slug,
+      composioTool.description ?? `Execute ${composioTool.slug}`,
+      inputZodSchema,
+      async args => {
+        try {
+          // Models occasionally emit tool input as a JSON string rather than an object (issue #2406).
+          const result = await executeTool(
+            composioTool.slug,
+            normalizeToolArguments(args, composioTool.slug)
+          );
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: typeof result === 'string' ? result : (JSON.stringify(result) ?? ''),
+              },
+            ],
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify({
+                  successful: false,
+                  error: error instanceof Error ? error.message : String(error),
+                  data: null,
+                }),
+              },
+            ],
+          };
+        }
+      }
+    );
+  }
+
+  /**
+   * Wraps multiple Composio tools as Claude Agent SDK MCP tools.
+   *
+   * @param tools - Array of Composio tools to wrap
+   * @param executeTool - Function to execute the tools
+   * @returns Array of Claude Agent SDK MCP tool definitions
+   *
+   * @example
+   * ```typescript
+   * const tools = await composio.tools.get('default', ['GMAIL_SEND_EMAIL', 'SLACK_POST_MESSAGE']);
+   * const mcpTools = provider.wrapTools(tools, composio.tools.execute);
+   * ```
+   */
+  wrapTools(tools: Tool[], executeTool: ExecuteToolFn): ClaudeAgentToolCollection {
+    return tools.map(tool => this.wrapTool(tool, executeTool));
+  }
+
+  /**
+   * Transform MCP URL response into standard format.
+   *
+   * @param data - The MCP URL response data
+   * @returns Standard MCP server response format
+   */
+  wrapMcpServerResponse(data: McpUrlResponse): McpServerGetResponse {
+    return data.map(item => ({
+      url: new URL(item.url),
+      name: item.name,
+    })) as McpServerGetResponse;
+  }
+}
+
+/**
+ * Re-export useful types from Claude Agent SDK for convenience
+ */
+export type { ClaudeAgentOptions };

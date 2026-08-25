@@ -1,0 +1,1425 @@
+:root {
+  --sans:
+    system-ui, -apple-system, blinkmacsystemfont, 'Segoe UI', helvetica, arial,
+    sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
+  --mono:
+    'San Francisco Mono', 'Monaco', 'Consolas', 'Lucida Console',
+    'DejaVu Sans Mono', 'Bitstream Vera Sans Mono', monospace;
+  --white: #fff;
+  --black: #1b1f24;
+  --gray-0: #f6f8fa;
+  --gray-1: #eaeef2;
+  --gray-2: #d0d7de;
+  --gray-3: #afb8c1;
+  --gray-4: #8c959f;
+  --gray-5: #6e7781;
+  --gray-6: #57606a;
+  --gray-7: #424a53;
+  --gray-8: #32383f;
+  --gray-9: #24292f;
+  --blue-0: #ddf4ff;
+  --blue-5: #0969da;
+  --blue-9: #002155;
+  --green-0: #dafbe1;
+  --green-5: #1a7f37;
+  --green-9: #002d11;
+  --yellow-0: #fff8c5;
+  --yellow-5: #9a6700;
+  --yellow-9: #3b2300;
+  --orange-0: #fff1e5;
+  --orange-5: #bc4c00;
+  --orange-9: #471700;
+  --red-0: #ffebe9;
+  --red-5: #cf222e;
+  --red-9: #4c0014;
+  --purple-0: #fbefff;
+  --purple-5: #8250df;
+  --purple-9: #2e1461;
+  --pink-0: #ffeff7;
+  --pink-5: #bf3989;
+  --pink-9: #4d0336;
+  --coral-0: #fff0eb;
+  --coral-5: #c4432b;
+  --coral-9: #510901;
+  --mdx-yellow: hsl(39deg 97% 58%);
+  --hl: var(--blue-5);
+  --fg: var(--black);
+  --bg: var(--white);
+
+  /* We manually add a blur on `::before` of the container, so no background needed. */
+  --docsearch-container-background: transparent !important;
+  --docsearch-footer-background: var(--white) !important;
+  --docsearch-footer-shadow: 0 -1px 0 0 var(--gray-2) !important;
+  --docsearch-highlight-color: var(--hl) !important;
+  --docsearch-hit-color: var(--gray-7) !important;
+  --docsearch-hit-shadow: inset 0 0 0 1px var(--gray-2) !important;
+  /* This is actually used in a `background` field so does not have to be a gradient. */
+  --docsearch-key-gradient: var(--gray-0) !important;
+  --docsearch-key-pressed-shadow: none !important;
+  --docsearch-key-shadow: inset 0 -1px 0 var(--gray-4) !important;
+  --docsearch-modal-background: var(--white) !important;
+  /* Card shadow: <https://github.com/unifiedjs/unifiedjs.github.io/blob/4de0391/asset/index.css#L399> */
+  --docsearch-modal-shadow:
+    0 0 0 0.2em rgb(3 102 214 / 0%), 0 13px 27px -5px rgb(50 50 93 / 25%),
+    0 8px 16px -8px rgb(0 0 0 / 30%), 0 -6px 16px -6px rgb(0 0 0 / 2.5%) !important;
+  /* Use the regular color: */
+  --docsearch-muted-color: var(--black) !important;
+  --docsearch-primary-color: var(--hl) !important;
+  --docsearch-searchbox-background: var(--white) !important;
+  --docsearch-searchbox-focus-background: var(--gray-0) !important;
+  --docsearch-searchbox-shadow: inset 0 0 0 2px var(--hl) !important;
+  --docsearch-text-color: var(--black) !important;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light dark;
+  accent-color: var(--hl);
+  -ms-text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+  word-wrap: break-word;
+  font-kerning: normal;
+  font-family: var(--sans);
+  font-feature-settings: 'kern', 'liga', 'clig', 'calt';
+  line-height: calc(1em + 1ex);
+}
+
+button,
+input {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+kbd,
+pre,
+code,
+.playground-write,
+.playground-draw {
+  font-family: var(--mono);
+  font-feature-settings: normal;
+  font-size: smaller;
+  line-height: calc(1em + (1 / 0.8 * 1ex));
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--fg);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+strong,
+th {
+  font-weight: 700;
+  letter-spacing: 0.0125em;
+}
+
+sup {
+  vertical-align: top;
+}
+
+main {
+  margin-block-start: calc(5.5 * (1em + 1ex));
+}
+
+dd,
+.content {
+  padding-inline: calc(1em + 1ex);
+}
+
+label {
+  display: block;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+label,
+p,
+pre,
+ol,
+ul,
+hr,
+table,
+blockquote,
+.block,
+.frame {
+  margin-block: calc(1em + 1ex);
+}
+
+summary {
+  cursor: pointer;
+}
+
+.anchor {
+  display: inline-block;
+  width: calc(1em + 1ex);
+  margin-inline-start: calc(-0.75 * (1em + 1ex));
+  margin-inline-end: calc(-0.25 * (1em + 1ex));
+  font-size: 1rem;
+}
+
+a[name],
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  display: block;
+  scroll-margin-block-start: 6rem;
+}
+
+h1,
+h2 {
+  font-size: 2.5em;
+  line-height: calc(1em + (1 / 2.5 * 1ex));
+  margin-block: calc(1 / 2.5 * (1em + 1ex));
+}
+
+.head-article,
+.foot-article,
+.foot-site {
+  position: relative;
+}
+
+.foot-site {
+  background-color: var(--gray-0);
+}
+
+.foot-article,
+.foot-site {
+  margin-block-start: calc(1 * (1em + 1ex));
+  border-block-start: 1px solid var(--gray-2);
+}
+
+.head-article {
+  margin-block-end: calc(1 * (1em + 1ex));
+}
+
+.navigation,
+.head-article {
+  border-block-end: 1px solid var(--gray-2);
+}
+
+.article-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.article-row-start,
+.article-row-end {
+  font-size: smaller;
+  line-height: calc(1em + (1 / 0.8 * 1ex));
+  flex-basis: 0;
+  flex-grow: 1;
+}
+
+.article-row-end {
+  margin-inline-start: auto;
+  text-align: end;
+}
+
+.foot-site {
+  padding-block: 1px;
+}
+
+h3 {
+  font-size: 2em;
+  line-height: calc(1em + (1 / 1.5 * 1ex));
+  margin-block: calc(1 / 1.5 * (1em + 1ex));
+}
+
+h4 {
+  font-size: 1.25em;
+  line-height: calc(1em + (1 / 1.25 * 1ex));
+  margin-block: calc(1 / 1.25 * (1em + 1ex));
+}
+
+h5,
+h6 {
+  font-size: 1em;
+  line-height: calc(1em + 1ex);
+  margin-block: calc(1em + 1ex);
+}
+
+h6 {
+  color: var(--gray-6);
+}
+
+img,
+svg {
+  max-width: 100%;
+  background-color: transparent;
+}
+
+img[align='right'] {
+  padding-inline-start: calc(1em + 1ex);
+}
+
+img[align='left'] {
+  padding-inline-end: calc(1em + 1ex);
+}
+
+kbd {
+  background-color: var(--gray-0);
+  border: 1px solid var(--gray-3);
+  border-radius: 3px;
+  box-shadow: inset 0 -1px 0 var(--gray-4);
+  color: var(--gray-9);
+  padding: 0.2em 0.4em;
+}
+
+pre {
+  word-wrap: normal;
+  overflow: auto;
+  font-size: inherit;
+}
+
+blockquote pre,
+li pre {
+  margin-inline: 0;
+}
+
+code {
+  background-color: var(--gray-0);
+}
+
+code {
+  border-radius: 3px;
+  padding-block: calc(0.33 * (1 / 0.8 * 1ex));
+  padding-inline: calc(0.66 * (1 / 0.8 * 1ex));
+}
+
+pre code {
+  display: block;
+  padding: calc(1em + 1ex) !important;
+  white-space: pre;
+  word-break: normal;
+  overflow-x: auto;
+  /* overflow: visible; */
+  word-wrap: normal;
+
+  mask-image: paint(squircle);
+  --squircle-radius: 10px;
+  border-radius: 10px;
+}
+
+.frame-tab-item {
+  background-color: var(--gray-1);
+  transition: 200ms;
+  transition-property: color, background-color;
+}
+
+pre code,
+.frame-body,
+.frame-tab-item-selected {
+  background-color: #fafafa !important; /* Color from one-light */
+}
+
+.frame-body-box {
+  padding: calc(1em + 1ex);
+}
+
+.frame-tab-item-dark.frame-tab-item-selected {
+  background-color: #282c34 !important;
+  color: var(--white);
+}
+
+.frame-body > pre:only-child {
+  margin-block: 0;
+}
+
+.frame-tab-item-inactive {
+  background-color: transparent;
+  color: var(--gray-6);
+}
+
+hr {
+  background-color: var(--gray-1);
+  border: 0;
+  border-radius: 3px;
+  height: calc(0.25 * (1em + 1ex));
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+  overflow: auto;
+  width: 100%;
+  font-variant-numeric: lining-nums;
+}
+
+tr {
+  border-block-start: 1px solid var(--gray-3);
+}
+
+tr:nth-child(even) {
+  background-color: hsl(210deg 17% 82% / 20%); /* gray-1 */
+}
+
+td,
+th {
+  border: 1px solid var(--gray-3);
+  padding-block: calc(0.33 * (1 / 0.8 * 1ex));
+  padding-inline: calc(0.66 * (1 / 0.8 * 1ex));
+}
+
+blockquote {
+  color: var(--gray-6);
+  margin-inline-start: 0;
+  padding-inline-start: calc(1em + 1ex);
+  position: relative;
+}
+
+blockquote::before {
+  content: '';
+  display: block;
+  width: calc(0.25 * (1em + 1ex));
+  height: 100%;
+  background-color: var(--gray-1);
+  border-radius: 3px;
+  position: absolute;
+  inset-inline-start: 0;
+}
+
+ol,
+ul {
+  padding-inline-start: 0;
+}
+
+ul {
+  list-style-type: circle;
+}
+
+ol {
+  list-style-type: decimal;
+}
+
+ul ul,
+ol ul,
+ul ol,
+ol ol {
+  margin-block: 0;
+}
+
+ul ul {
+  list-style-type: disc;
+}
+
+ul ul ul {
+  list-style-type: square;
+}
+
+ol ol {
+  list-style-type: lower-roman;
+}
+
+ol ol ol {
+  list-style-type: lower-alpha;
+}
+
+li {
+  word-wrap: break-all;
+  margin-block: calc(0.25 * (1em + 1ex));
+  margin-inline-start: calc(1em + 1ex);
+}
+
+.task-list-item {
+  list-style-type: none;
+  margin-inline-start: 0;
+}
+
+.task-list-item input {
+  margin: 0;
+  margin-inline-end: calc(0.25 * (1em + 1ex));
+}
+
+dt {
+  font-style: italic;
+  margin-block-end: 0;
+}
+
+dt + dt {
+  margin-block-start: 0;
+}
+
+dd {
+  margin-block-start: 0;
+}
+
+a {
+  color: var(--hl);
+  transition: 200ms;
+  transition-property: color;
+}
+
+a.alt {
+  color: var(--purple-5);
+}
+
+.navigation a {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+a[aria-current],
+a:hover,
+a:focus {
+  color: inherit;
+  text-decoration: none;
+}
+
+nav a[aria-current],
+nav a:hover,
+nav a:focus {
+  color: var(--hl);
+  text-decoration: underline;
+}
+
+button,
+a.cta {
+  outline: 0;
+  padding: calc(0.25 * (1em + 1ex)) calc(0.5 * (1em + 1ex));
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  color: var(--black);
+  transition: 200ms;
+  transition-property: color, background-color, border-color, box-shadow;
+  font-weight: 400;
+  background-color: transparent;
+}
+
+a.cta:hover,
+a.cta:focus,
+a.cta:active,
+button:hover,
+button:focus,
+button:active {
+  color: var(--hl);
+}
+
+a.cta:active,
+button:active,
+a.cta.active,
+button.active {
+  background-color: var(--hl);
+  border-color: var(--hl);
+  color: var(--white);
+}
+
+a.cta:active,
+a.cta.active,
+a.cta:focus,
+button.active,
+button:active,
+button:focus {
+  box-shadow: 0 0 0 0.2em rgb(191 135 0 / 30%); /* --hl */
+}
+
+a.cta.success,
+button.success {
+  background-color: var(--green-5);
+  border-color: var(--green-5);
+  box-shadow: 0 0 0 0.2em rgb(26 127 55 / 30%); /* --green-5 */
+  color: var(--white);
+}
+
+.content {
+  width: 100%;
+  max-width: calc(36 * (1em + 1ex));
+  margin: calc(1 * (1em + 1ex)) auto;
+}
+
+.navigation {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-start: 0;
+  display: flex;
+  padding: calc(0.5 * (1em + 1ex));
+  padding-top: calc(2 * (1em + 1ex));
+}
+
+.navigation::before,
+.DocSearch-Container::before {
+  content: '';
+  inset: 0;
+  position: absolute;
+  z-index: 2;
+  background-image: radial-gradient(
+    ellipse at 50% 0%,
+    hsl(39deg 97% 88% / 90%) 0%,
+    hsl(39deg 97% 96% / 90%) 100%
+  );
+}
+
+.DocSearch li {
+  margin: 0;
+}
+
+#banner {
+  padding: calc(0.25 * (1em + 1ex));
+  background-color: var(--mdx-yellow);
+  color: var(--white);
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  text-align: center;
+  z-index: 10;
+  font-weight: bolder;
+  letter-spacing: 1px;
+}
+
+.full-bleed {
+  width: 100vw;
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  padding-inline: calc(1em + 1ex);
+}
+
+/* Note that the `backdrop-filter` itself is applied in light mode. */
+@supports (backdrop-filter: blur(1ex)) {
+  .navigation::before,
+  .DocSearch-Container::before {
+    backdrop-filter: saturate(200%) blur(1ex);
+    background-image: radial-gradient(
+      ellipse at 50% 0%,
+      hsl(39deg 97% 88% / 60%) 0%,
+      hsl(39deg 97% 98% / 60%) 80%
+    );
+  }
+}
+
+.DocSearch-Modal,
+.navigation-primary,
+.navigation-secondary,
+.navigation-search,
+.navigation-tertiary {
+  z-index: 3;
+}
+
+.navigation .icon {
+  display: block;
+  width: auto;
+  height: calc(1em + 1ex);
+}
+
+.navigation-primary,
+.navigation-secondary,
+.navigation-tertiary,
+.navigation-primary h1,
+.navigation-secondary li,
+.navigation-tertiary li {
+  margin: 0;
+}
+
+.navigation-primary,
+.navigation-secondary,
+.navigation-search,
+.navigation-tertiary {
+  margin: 0;
+  padding: calc(0.5 * (1em + 1ex));
+  display: flex;
+  list-style-type: none;
+}
+
+.navigation-search {
+  padding: calc(0.25em + 0.25ex);
+}
+
+.DocSearch-Button {
+  margin: 0 !important;
+}
+
+.navigation-primary h1,
+.navigation-secondary li,
+.navigation-tertiary li {
+  padding: 0;
+}
+
+.navigation-primary h1 {
+  font-size: 1em;
+  border-bottom-width: 0;
+}
+
+.navigation-tertiary {
+  justify-content: flex-end;
+}
+
+.navigation-secondary {
+  z-index: 3;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 1;
+  flex-direction: row;
+  align-items: stretch;
+  flex-grow: 1;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 2ex,
+    black calc(100% - 2ex),
+    transparent
+  );
+}
+
+.navigation-secondary li {
+  white-space: nowrap;
+}
+
+.navigation-secondary li + li {
+  padding-inline-start: calc(0.5 * (1em + 1ex));
+}
+
+/* Some extra spacing because otherwise the blur is shown over it. */
+.navigation-secondary li:last-child {
+  padding-inline-end: calc(0.5 * (1em + 1ex));
+}
+
+.navigation-secondary ol,
+.navigation-show-big {
+  display: none;
+}
+
+.navigation-tertiary li + li {
+  padding-inline-start: calc(0.5 * (1em + 1ex));
+}
+
+.skip-to-navigation {
+  inset-block-start: 0;
+  inset-inline-start: 0;
+}
+
+.skip-to-content,
+.skip-to-navigation {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  overflow: hidden;
+  clip: rect(1px, 1px, 1px, 1px);
+}
+
+.skip-to-content:focus,
+.skip-to-navigation:focus {
+  z-index: 4;
+  width: auto;
+  height: auto;
+  clip: auto;
+  background-color: var(--hl);
+  color: var(--white);
+  padding: calc(1em + 1ex);
+}
+
+.note {
+  color: var(--gray-9);
+  font-size: smaller;
+  line-height: calc(1em + (1 / 0.8 * 1ex));
+  padding-inline: calc(1 / 0.8 * (1em + 1ex));
+  margin-block: calc(1 / 0.8 * (1em + 1ex));
+  position: relative;
+  z-index: 0;
+  inset: 0;
+  mask-image: paint(squircle);
+  --squircle-radius: 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+
+  /* Actually the border color: */
+  background-color: var(--purple-5);
+}
+
+.note::after {
+  content: '';
+  position: absolute;
+  mask-image: paint(squircle);
+  z-index: -1;
+  background-color: hsl(9deg 64% 8%);
+  inset: 0;
+  --squircle-radius: 9px;
+  border-radius: 9px;
+
+  background-color: var(--purple-0);
+}
+
+.legacy {
+  background-color: var(--gray-5);
+}
+
+.legacy::after {
+  background-color: var(--gray-0);
+}
+
+.important {
+  background-color: var(--red-5);
+}
+
+.important::after {
+  background-color: var(--red-0);
+}
+
+.card {
+  display: block;
+  padding: calc(1 * (1em + 1ex));
+  margin-block: calc(2 * (1em + 1ex));
+  overflow: hidden;
+  /* yellow */
+  background-image:
+    radial-gradient(
+      ellipse at 0% 0%,
+      rgb(252 180 45 / 5%) 20%,
+      rgb(252 180 45 / 0%) 80%
+    ),
+    /* purple */
+      radial-gradient(
+        ellipse at 0% 100%,
+        rgb(130 80 223 / 5%) 20%,
+        rgb(130 80 223 / 0%) 80%
+      );
+
+  mask-image: paint(squircle);
+  --squircle-radius: 20px;
+  border-radius: 20px;
+}
+
+.emoji-list > ul {
+  list-style-type: none;
+}
+
+.emoji-list > ul > li {
+  margin-inline-start: 0;
+}
+
+.big {
+  font-size: larger;
+  line-height: calc(1em + (1 / 1.2 * 1ex));
+  padding: calc(1 / 1.2 * (1em + 1ex));
+  margin-block: calc(1 / 1.2 * (1em + 1ex));
+}
+
+.frame {
+  /* gray-1 is used for unselected tabs, but gray-2 is really too much
+   * This is a perfect mix between the two: */
+  background-color: hsl(210, 20.5%, 88.8%);
+  position: relative;
+
+  mask-image: paint(squircle);
+  --squircle-radius: 10px;
+  border-radius: 10px;
+}
+
+.frame-resizeable {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+
+  min-height: 10rem;
+  height: 24rem;
+  resize: vertical;
+}
+
+.frame-tab-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  margin-block-start: calc(1em + 1ex);
+  list-style-type: none;
+  margin: 0;
+  padding: calc(0.25em + 0.25ex);
+  padding-block-end: 0;
+}
+
+.frame-tab-bar-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  mask-image: linear-gradient(
+    to right,
+    hsl(0deg 0% 100% / 30%),
+    black calc(0.5 * (1em + 1ex)),
+    black calc(100% - 0.5 * (1em + 1ex)),
+    hsl(0deg 0% 100% / 30%)
+  );
+}
+
+.frame-body {
+  border-bottom-left-radius: 3px;
+  border-bottom-right-radius: 3px;
+}
+
+.frame-body > pre {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.frame-body > pre > code {
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.frame-tab-bar + pre,
+.frame-tab-bar + .highlight > pre {
+  margin-block-start: 0;
+}
+
+.frame-tab-bar + pre code,
+.frame-tab-bar + .highlight > pre code {
+  --squircle-radius: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.frame-tab-item {
+  font-family: var(--mono);
+  font-size: smaller;
+  line-height: calc(1em + (1 / 0.8 * 1ex));
+  padding-block: calc(1 / 0.8 * 0.25 * (1em + 1ex));
+  padding-inline: calc(1 / 0.8 * 0.5 * (1em + 1ex));
+  margin: calc(1 / 0.8 * 0.25 * (1em + 1ex));
+  margin-block-end: 0;
+  border-top-left-radius: 2px;
+  border-top-right-radius: 2px;
+  white-space: nowrap;
+}
+
+.frame-tab-item-language {
+  margin-left: auto;
+  padding-inline: 0;
+}
+
+.code-frame .copy-button {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-end: 0;
+  /* Lines it out nicely if there’s just one line of code. */
+  margin: calc(0.618 * (1em + 1ex));
+  backdrop-filter: saturate(200%) blur(1ex);
+}
+
+#markdown-for-thecomponent-era {
+  font-weight: 600;
+}
+
+#markdown-for-thecomponent-era strong {
+  color: var(--mdx-yellow);
+}
+
+.home hr {
+  height: 0;
+  background-color: transparent;
+}
+
+.home-preview {
+  position: relative;
+  border: 1px solid transparent;
+  padding: calc(1em + 1ex);
+  background-color: var(--gray-2);
+  mask-image: paint(squircle);
+  z-index: 0;
+  --squircle-radius: 10px;
+  border-radius: 10px;
+}
+
+.home-preview::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-color: var(--bg);
+  mask-image: paint(squircle);
+  --squircle-radius: 9px;
+  border-radius: 9px;
+}
+
+:is(.home-preview, .card, .frame-body, .nav-description, .big-columns > *)
+  > :is(h1, h2, h3, h4, p, .block):first-child {
+  margin-block-start: 0;
+}
+
+:is(.home-preview, .card, .frame-body, .nav-description, .big-columns > *)
+  > :is(h1, h2, h3, h4, p, .block):last-child {
+  margin-block-end: 0;
+}
+
+.home .anchor {
+  display: none;
+}
+
+.snowfall {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.snowfall-bar {
+  flex-basis: 0;
+  flex-grow: 1;
+  margin: calc(0.125 * (1em + 1ex));
+  background-color: var(--fg);
+}
+
+details {
+  border: 1px solid var(--gray-2);
+  padding: 1ex;
+  border-radius: 3px;
+}
+
+details[open] {
+  padding: calc(1em + 1ex);
+}
+
+.rehype-twoslash-completion-deprecated {
+  opacity: 0.5;
+}
+
+.rehype-twoslash-popover-target {
+  cursor: default;
+}
+
+.highlight:is(:hover, :focus-within) .rehype-twoslash-popover-target {
+  background-color: var(--gray-2);
+}
+
+/* Wavy underline for errors. */
+.rehype-twoslash-error-target {
+  background-repeat: repeat-x;
+  background-position: bottom left;
+  background-image: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 6 3" enable-background="new 0 0 6 3" height="3" width="6"><g fill="%23c94824"><polygon points="5.5,0 2.5,3 1.1,3 4.1,0"/><polygon points="4,0 6,2 6,0.6 5.4,0"/><polygon points="0,2 1,3 2.4,3 0,0.6"/></g></svg>');
+}
+
+/* The content that will be shown in the tooltip. */
+.rehype-twoslash-popover {
+  position: absolute;
+  max-width: calc(45 * (1em + 1ex));
+  padding: calc(0.5 * (1em + 1ex));
+  margin: 0;
+  background-color: var(--bg);
+  border: 1px solid var(--gray-2);
+  border-radius: 3px;
+}
+
+/* No padding if we have a padded code block (and perhaps more blocks) */
+.rehype-twoslash-popover:has(.rehype-twoslash-popover-code) {
+  padding: 0;
+}
+
+.rehype-twoslash-popover-code {
+  margin: 0;
+}
+
+.rehype-twoslash-popover-code > code {
+  mask-image: none;
+  border-radius: 0;
+}
+
+.rehype-twoslash-popover-description {
+  background-color: var(--bg);
+  padding: 0 1em;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --white: #f0f6fc;
+    --black: #010409;
+    --gray-0: var(--white);
+    --gray-1: #c9d1d9;
+    --gray-2: #b1bac4;
+    --gray-3: #8b949e;
+    --gray-4: #6e7681;
+    --gray-5: #484f58;
+    --gray-6: #30363d;
+    --gray-7: #21262d;
+    --gray-8: #161b22;
+    --gray-9: #0d1117;
+    --hl: var(--mdx-yellow);
+    --fg: var(--white);
+    --bg: var(--black);
+
+    --docsearch-key-gradient: #eaeef2 !important;
+  }
+
+  .navigation-secondary a {
+    display: initial;
+  }
+
+  .note {
+    color: var(--gray-0);
+  }
+
+  .note::after {
+    background-color: var(--purple-9);
+  }
+
+  .legacy::after {
+    background-color: var(--gray-9);
+  }
+
+  .important::after {
+    background-color: var(--red-9);
+  }
+
+  .navigation::before {
+    background-image: radial-gradient(
+      ellipse at 50% 0%,
+      hsl(39deg 97% 12% / 90%) 0%,
+      hsl(39deg 97% 4% / 90%) 100%
+    );
+  }
+
+  /* Note that the `backdrop-filter` itself is applied in light mode. */
+  @supports (backdrop-filter: blur(1ex)) {
+    .navigation::before {
+      background-image: radial-gradient(
+        ellipse at 50% 0%,
+        hsl(39deg 97% 12% / 60%) 0%,
+        hsl(39deg 97% 4% / 60%) 90%
+      );
+    }
+  }
+
+  .card {
+    /* yellow */
+    background-image:
+      radial-gradient(
+        ellipse at 0% 0%,
+        rgb(252 180 45 / 10%) 20%,
+        rgb(252 180 45 / 0%) 80%
+      ),
+      /* purple */
+        radial-gradient(
+          ellipse at 0% 100%,
+          rgb(130 80 223 / 10%) 20%,
+          rgb(130 80 223 / 0%) 80%
+        );
+  }
+
+  .foot-article,
+  .foot-site {
+    border-top-color: var(--gray-6);
+  }
+
+  .navigation,
+  .head-article {
+    border-bottom-color: var(--gray-6);
+  }
+
+  .home-preview {
+    background-color: var(--gray-6);
+  }
+
+  .foot-site {
+    background-color: var(--gray-8);
+  }
+
+  .highlight:is(:hover, :focus-within) .rehype-twoslash-popover-target {
+    background-color: var(--gray-5);
+  }
+
+  .rehype-twoslash-popover {
+    border-color: var(--gray-6);
+  }
+
+  h6 {
+    color: var(--gray-3);
+  }
+
+  kbd {
+    background-color: var(--black);
+    border-color: var(--gray-6);
+    box-shadow: inset 0 -1px 0 var(--gray-6);
+    color: var(--gray-0);
+  }
+
+  code {
+    background-color: var(--gray-6);
+  }
+
+  .frame {
+    background-color: var(--gray-9);
+  }
+
+  .frame-tab-item {
+    background-color: var(--gray-8);
+  }
+
+  pre code,
+  .frame-body,
+  .frame-tab-item-selected,
+  .frame-tab-item-dark.frame-tab-item-selected {
+    background-color: var(--gray-7) !important;
+  }
+
+  .frame-tab-item-inactive {
+    background-color: transparent;
+    color: var(--gray-3);
+  }
+
+  hr {
+    background-color: var(--gray-6);
+  }
+
+  tr {
+    background-color: var(--gray-9);
+    border-top-color: var(--gray-6);
+  }
+
+  tr:nth-child(2n) {
+    background-color: var(--gray-8);
+    color: var(--white);
+  }
+
+  td,
+  th {
+    border-color: var(--gray-4);
+  }
+
+  blockquote {
+    color: var(--gray-2);
+  }
+
+  blockquote::before {
+    background-color: var(--gray-4);
+  }
+
+  a.cta,
+  button {
+    color: var(--gray-0);
+    border-color: currentColor;
+    background-color: transparent;
+  }
+
+  a.cta:hover,
+  a.cta:focus,
+  a.cta:active,
+  button:hover,
+  button:focus,
+  button:active {
+    border-color: var(--hl);
+  }
+
+  a.cta:active,
+  button:active {
+    background-color: var(--hl);
+    color: var(--gray-0);
+  }
+
+  a.cta.success,
+  button.success {
+    background-color: var(--green-5);
+    border-color: var(--green-5);
+    color: var(--white);
+  }
+
+  details {
+    border-color: var(--gray-6);
+  }
+}
+
+@media (min-width: 22em) {
+  #markdown-for-thecomponent-era {
+    font-size: 2rem;
+    line-height: calc(1em + (1 / 2 * 1ex));
+    margin-block: calc(1 / 2 * (1em + 1ex));
+  }
+}
+
+@media (min-width: 40em) {
+  html {
+    font-size: 1.125em;
+  }
+
+  .navigation-search {
+    padding: calc(0.3em + 0.3ex);
+  }
+
+  #markdown-for-thecomponent-era {
+    font-size: 3rem;
+    line-height: calc(1em + (1 / 3 * 1ex));
+    margin-block: calc(1 / 3 * (1em + 1ex));
+    padding-block: calc(1 / 3 * (1em + 1ex));
+  }
+
+  .foot-article,
+  .foot-site {
+    margin-block-start: calc(2 * (1em + 1ex));
+  }
+
+  .head-article {
+    margin-block-end: calc(2 * (1em + 1ex));
+  }
+
+  .foot-site {
+    padding-block: calc(1 * (1em + 1ex));
+  }
+
+  .big {
+    padding: calc(2 * (1em + 1ex));
+  }
+
+  .big.card {
+    margin-block: calc(2 * (1em + 1ex));
+  }
+}
+
+@media (min-width: 56em) {
+  #markdown-for-thecomponent-era {
+    font-size: 5rem;
+    line-height: calc(1em + (1 / 5 * 1ex));
+    margin-block: calc(1 / 5 * (1em + 1ex));
+    padding-block: calc(2 * 1 / 5 * (1em + 1ex));
+  }
+
+  .playground {
+    display: grid;
+    grid-template-columns: 49% 49%;
+  }
+}
+
+@media (min-width: 64em) {
+  .navigation-show-big {
+    display: block;
+  }
+
+  .big {
+    padding: calc(1.66 * (1em + 1ex));
+  }
+
+  .big.card {
+    margin-block: calc(1.66 * (1em + 1ex));
+  }
+
+  /* Assume they don’t scroll anymore. */
+  .frame-tab-bar-scroll,
+  .navigation-secondary {
+    mask-image: initial;
+  }
+}
+
+@media (min-width: 76em) {
+  #markdown-for-thecomponent-era {
+    font-size: 5.9rem;
+    line-height: calc(1em + (1 / 6 * 1ex));
+    margin-block: calc(1 / 6 * (1em + 1ex));
+  }
+
+  .big-columns {
+    display: flex;
+    justify-content: space-between;
+    margin: 0 calc(-1 * (1em + 1ex));
+  }
+
+  .big-columns > * {
+    width: calc(15 * (1em + 1ex));
+    flex: 1;
+    margin: 0 calc(1em + 1ex);
+  }
+}
+
+.playground {
+  min-height: 40rem;
+  gap: calc(1em + 1ex);
+}
+
+.playground-area,
+.playground-controls,
+.playground-result {
+  overflow: auto;
+  border-radius: 1ex;
+  padding: 1em;
+  margin-block: calc(1em + 1ex);
+}
+
+.playground-area {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.playground-controls,
+.playground-result {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.playground-inner {
+  position: relative;
+  max-width: 100%;
+  overflow: hidden;
+  min-height: calc(10 * (1em + 1ex));
+}
+
+.playground-write,
+.playground-draw {
+  font-size: 14px;
+  tab-size: 4;
+  letter-spacing: normal;
+  line-height: calc(1 * (1em + 1ex));
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background: transparent;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  resize: none;
+}
+
+.playground-write::selection {
+  color: var(--fg);
+  background-color: hsl(42.22deg 74.31% 57.25% / 66%);
+}
+
+.playground-write {
+  position: absolute;
+  top: 0;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  color: transparent;
+  caret-color: var(--hl);
+}
+
+.playground-controls fieldset {
+  border: 0;
+  padding: 0;
+  margin-inline: 0;
+}
+
+.playground-controls fieldset[disabled] {
+  opacity: 0.6;
+}
+
+.playground-controls label {
+  font-size: smaller;
+  display: block;
+  margin-block: calc(0.5 * (1em + 1ex));
+}
+
+.playground-controls select {
+  padding: 0.5ex;
+}
+
+/* Can’t have bold things; they mess with the textarea */
+.playground .pl-mh,
+.playground .pl-mh .pl-en,
+.playground .pl-ms {
+  font-weight: normal !important;
+}

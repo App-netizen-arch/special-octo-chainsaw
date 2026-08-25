@@ -1,0 +1,332 @@
+import { dirname, isAbsolute, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import type {
+  NodeVersionMeta,
+  NodeVersionFromUser,
+  DenoVersionMeta,
+  DenoVersionFromUser,
+  CliVersionMeta,
+  CliVersionFromUser,
+  SkipInCI,
+  NonEmptyArray,
+} from './types';
+import { INSTALL_E2E_MODES, INSTALL_E2E_SHELLS } from './const';
+
+export type InstallE2EMode = (typeof INSTALL_E2E_MODES)[number];
+export type InstallE2EShell = (typeof INSTALL_E2E_SHELLS)[number];
+
+export interface InstallE2EConfig {
+  mode: InstallE2EMode;
+  shell: InstallE2EShell;
+  version: string;
+  releaseDir?: string;
+}
+
+declare module 'bun' {
+  interface Env {
+    CI?: string;
+    COMPOSIO_E2E_NODE_VERSION?: string;
+    COMPOSIO_E2E_DENO_VERSION?: string;
+    COMPOSIO_E2E_CLI_VERSION?: string;
+    COMPOSIO_INSTALL_E2E_MODE?: string;
+    COMPOSIO_INSTALL_E2E_SHELL?: string;
+    COMPOSIO_INSTALL_E2E_VERSION?: string;
+    COMPOSIO_INSTALL_E2E_RELEASE_DIR?: string;
+  }
+}
+
+function resolveEnumValue<T extends string>(
+  name: string,
+  value: string | undefined,
+  allowed: readonly T[],
+  fallback: T
+): T {
+  const resolved = value || fallback;
+  if (!allowed.includes(resolved as T)) {
+    throw new Error(`${name} must be one of: ${allowed.join(', ')} (got ${resolved})`);
+  }
+  return resolved as T;
+}
+
+export function resolveInstallE2EConfig(): InstallE2EConfig {
+  const mode = resolveEnumValue(
+    'COMPOSIO_INSTALL_E2E_MODE',
+    Bun.env.COMPOSIO_INSTALL_E2E_MODE,
+    INSTALL_E2E_MODES,
+    'local'
+  );
+  const shell = resolveEnumValue(
+    'COMPOSIO_INSTALL_E2E_SHELL',
+    Bun.env.COMPOSIO_INSTALL_E2E_SHELL,
+    INSTALL_E2E_SHELLS,
+    'bash'
+  );
+  const version = Bun.env.COMPOSIO_INSTALL_E2E_VERSION || 'latest';
+  const releaseDir = Bun.env.COMPOSIO_INSTALL_E2E_RELEASE_DIR;
+
+  if (
+    version !== 'latest' &&
+    !/^@composio\/cli@[0-9]+\.[0-9]+\.[0-9]+(?:-beta\.[0-9]+)?$/.test(version)
+  ) {
+    throw new Error(
+      'COMPOSIO_INSTALL_E2E_VERSION must be latest or a full @composio/cli release tag'
+    );
+  }
+
+  if (mode === 'local') {
+    if (!releaseDir) {
+      throw new Error('COMPOSIO_INSTALL_E2E_RELEASE_DIR is required in local mode');
+    }
+    if (!isAbsolute(releaseDir)) {
+      throw new Error('COMPOSIO_INSTALL_E2E_RELEASE_DIR must be an absolute path');
+    }
+    if (version !== 'latest') {
+      throw new Error('COMPOSIO_INSTALL_E2E_VERSION is only supported in prod mode');
+    }
+  }
+
+  return {
+    mode,
+    shell,
+    version,
+    releaseDir,
+  };
+}
+
+/**
+ * Determine if we're running in a Continuous Integration suite.
+ */
+export function isCI(): boolean {
+  return Boolean(Bun.env.CI);
+}
+
+/**
+ * Get the repository root path.
+ * Computed from the location of this module file.
+ */
+export function getRepoRoot(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  // From _utils/src/ to repo root: src -> _utils -> e2e-tests -> ts -> composio
+  return resolve(here, '../../../..');
+}
+
+/**
+ * Resolve the Node.js versions to test against, with CI skip state.
+ *
+ * The `'current'` version always resolves to the value in mise.toml.
+ *
+ * In CI mode (CI env var set + COMPOSIO_E2E_NODE_VERSION set):
+ * - Versions not matching COMPOSIO_E2E_NODE_VERSION are marked to skip
+ *
+ * In local mode:
+ * - COMPOSIO_E2E_NODE_VERSION overrides everything (single version, no skip)
+ * - Otherwise returns all configured versions (no skip)
+ */
+export function resolveNodeVersionMetaList(
+  configNodeVersions?: readonly NodeVersionFromUser[]
+): NonEmptyArray<NodeVersionMeta> {
+  const envVersion = Bun.env.COMPOSIO_E2E_NODE_VERSION;
+
+  // Local mode with env override: single version, no skip
+  if (!isCI() && envVersion) {
+    return [{ kind: 'overridden', value: envVersion, skip: { value: false } }];
+  }
+
+  // Only read mise.toml after env override check.
+  const miseNodeVersion = getMiseVersion('node');
+
+  // No config provided: use mise.toml version
+  if (configNodeVersions === undefined || configNodeVersions.length === 0) {
+    return [{ kind: 'current', value: miseNodeVersion, skip: { value: false } }];
+  }
+
+  const resolvedVersions = configNodeVersions.map((v): NodeVersionMeta => {
+    if (v === 'current') {
+      return {
+        kind: 'current',
+        value: miseNodeVersion,
+        skip: computeSkipForVersion(envVersion, miseNodeVersion),
+      };
+    }
+    return { kind: 'static', value: v, skip: computeSkipForVersion(envVersion, v) };
+  });
+
+  return resolvedVersions as NonEmptyArray<NodeVersionMeta>;
+}
+
+/**
+ * Compute skip state for a single version in CI mode.
+ */
+function computeSkipForVersion(envVersion: string | undefined, versionValue: string): SkipInCI {
+  if (!isCI() || !envVersion) {
+    return { value: false };
+  }
+
+  if (versionValue !== envVersion) {
+    return {
+      value: true,
+      reason: `Node ${versionValue} not selected (running ${envVersion})`,
+    };
+  }
+
+  return { value: false };
+}
+
+/**
+ * Read a tool version from mise.toml.
+ * Used to determine the version for 'current' tests.
+ */
+export function getMiseVersion(tool: 'node' | 'deno'): string {
+  try {
+    return execFileSync('mise', ['current', tool], {
+      cwd: getRepoRoot(),
+      encoding: 'utf-8',
+    }).trim();
+  } catch (err) {
+    throw new Error(`Failed to resolve ${tool} version from mise.toml: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * Read the CLI version from ts/packages/cli/package.json.
+ * Used to determine the version for 'current' tests.
+ */
+export function getCliPackageVersion(): string {
+  try {
+    const pkg = readFileSync(resolve(getRepoRoot(), 'ts/packages/cli/package.json'), 'utf-8');
+    const parsed = JSON.parse(pkg) as { version?: string };
+    if (!parsed.version) {
+      throw new Error('Missing version field');
+    }
+    return String(parsed.version).trim();
+  } catch (err) {
+    throw new Error(
+      `Failed to read CLI version from ts/packages/cli/package.json: ${(err as Error).message}`
+    );
+  }
+}
+
+/**
+ * Compute skip state for a Deno version in CI mode.
+ */
+function computeSkipForDenoVersion(envVersion: string | undefined, versionValue: string): SkipInCI {
+  if (!isCI() || !envVersion) {
+    return { value: false };
+  }
+
+  if (versionValue !== envVersion) {
+    return {
+      value: true,
+      reason: `Deno ${versionValue} not selected (running ${envVersion})`,
+    };
+  }
+
+  return { value: false };
+}
+
+/**
+ * Compute skip state for a CLI version in CI mode.
+ */
+function computeSkipForCliVersion(envVersion: string | undefined, versionValue: string): SkipInCI {
+  if (!isCI() || !envVersion) {
+    return { value: false };
+  }
+
+  if (versionValue !== envVersion) {
+    return {
+      value: true,
+      reason: `CLI ${versionValue} not selected (running ${envVersion})`,
+    };
+  }
+
+  return { value: false };
+}
+
+/**
+ * Resolve the Deno versions to test against, with CI skip state.
+ *
+ * The `'current'` version always resolves to the value in mise.toml.
+ *
+ * In CI mode (CI env var set + COMPOSIO_E2E_DENO_VERSION set):
+ * - Versions not matching COMPOSIO_E2E_DENO_VERSION are marked to skip
+ *
+ * In local mode:
+ * - COMPOSIO_E2E_DENO_VERSION overrides everything (single version, no skip)
+ * - Otherwise returns all configured versions (no skip)
+ */
+export function resolveDenoVersionMetaList(
+  configDenoVersions?: readonly DenoVersionFromUser[]
+): NonEmptyArray<DenoVersionMeta> {
+  const envVersion = Bun.env.COMPOSIO_E2E_DENO_VERSION;
+
+  // Local mode with env override: single version, no skip
+  // Check this BEFORE calling mise so env override works without the local toolchain installed.
+  if (!isCI() && envVersion) {
+    return [{ kind: 'overridden', value: envVersion, skip: { value: false } }];
+  }
+
+  // Only read mise.toml after env override check.
+  const miseDenoVersion = getMiseVersion('deno');
+
+  // No config provided: use mise.toml version
+  if (configDenoVersions === undefined || configDenoVersions.length === 0) {
+    return [{ kind: 'current', value: miseDenoVersion, skip: { value: false } }];
+  }
+
+  const resolvedVersions = configDenoVersions.map((v): DenoVersionMeta => {
+    if (v === 'current') {
+      return {
+        kind: 'current',
+        value: miseDenoVersion,
+        skip: computeSkipForDenoVersion(envVersion, miseDenoVersion),
+      };
+    }
+    return { kind: 'static', value: v, skip: computeSkipForDenoVersion(envVersion, v) };
+  });
+
+  return resolvedVersions as NonEmptyArray<DenoVersionMeta>;
+}
+
+/**
+ * Resolve the CLI versions to test against, with CI skip state.
+ *
+ * The `'current'` version always resolves to the value in ts/packages/cli/package.json.
+ *
+ * In CI mode (CI env var set + COMPOSIO_E2E_CLI_VERSION set):
+ * - Versions not matching COMPOSIO_E2E_CLI_VERSION are marked to skip
+ *
+ * In local mode:
+ * - COMPOSIO_E2E_CLI_VERSION overrides everything (single version, no skip)
+ * - Otherwise returns all configured versions (no skip)
+ */
+export function resolveCliVersionMetaList(
+  configCliVersions?: readonly CliVersionFromUser[]
+): NonEmptyArray<CliVersionMeta> {
+  const envVersion = Bun.env.COMPOSIO_E2E_CLI_VERSION;
+  const currentVersion = getCliPackageVersion();
+
+  // Local mode with env override: single version, no skip
+  if (!isCI() && envVersion) {
+    return [{ kind: 'overridden', value: envVersion, skip: { value: false } }];
+  }
+
+  // No config provided: use package.json version
+  if (configCliVersions === undefined || configCliVersions.length === 0) {
+    return [{ kind: 'current', value: currentVersion, skip: { value: false } }];
+  }
+
+  const resolvedVersions = configCliVersions.map((v): CliVersionMeta => {
+    if (v === 'current') {
+      return {
+        kind: 'current',
+        value: currentVersion,
+        skip: computeSkipForCliVersion(envVersion, currentVersion),
+      };
+    }
+    return { kind: 'static', value: v, skip: computeSkipForCliVersion(envVersion, v) };
+  });
+
+  return resolvedVersions as NonEmptyArray<CliVersionMeta>;
+}

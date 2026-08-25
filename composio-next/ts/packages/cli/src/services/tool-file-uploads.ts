@@ -1,0 +1,361 @@
+// This module's upload pipeline is plain async/await around the raw
+// @composio/client promise API. The Effect caller resolves the platform
+// FileSystem and Path services and passes the instances in as parameters;
+// `readLocalFileBytes` below is the single point where a FileSystem effect
+// is run to completion inside this promise pipeline.
+import type { FileSystem, Path } from '@effect/platform';
+import type { Composio as RawComposioClient } from '@composio/client';
+import { assertSafeFileUploadPath } from '@composio/core';
+import { Cause, Data, Effect, Exit, Predicate } from 'effect';
+import { guessToolkitFromToolSlug } from 'src/utils/toolkit-from-tool-slug';
+
+type JsonSchema = Record<string, unknown>;
+
+export class ToolFileUploadError extends Data.TaggedError('services/ToolFileUploadError')<{
+  readonly cause?: unknown;
+  readonly message: string;
+  readonly reason: 'source-fetch' | 'source-read' | 'unsupported-source' | 'upload';
+  readonly status?: number;
+}> {}
+
+const isFileLike = (value: unknown): value is File =>
+  typeof File !== 'undefined' && value instanceof File;
+
+const isSchemaRecord = (value: unknown): value is JsonSchema => Predicate.isRecord(value);
+
+const getSchemaVariant = (value: unknown): ReadonlyArray<JsonSchema> =>
+  Array.isArray(value) ? value.filter(isSchemaRecord) : [];
+
+const getSchemaVariants = (schema: JsonSchema | undefined): ReadonlyArray<JsonSchema> => [
+  ...getSchemaVariant(schema?.anyOf),
+  ...getSchemaVariant(schema?.oneOf),
+  ...getSchemaVariant(schema?.allOf),
+];
+
+const transformSchema = (schema: JsonSchema): JsonSchema => {
+  if (schema.file_uploadable === true) {
+    return {
+      title: schema.title,
+      description: schema.description,
+      format: 'path',
+      type: 'string',
+      file_uploadable: true,
+    };
+  }
+
+  const transformed: JsonSchema = { ...schema };
+
+  if (isSchemaRecord(schema.properties)) {
+    transformed.properties = Object.fromEntries(
+      Object.entries(schema.properties).map(([key, value]) => [
+        key,
+        isSchemaRecord(value) ? transformSchema(value) : value,
+      ])
+    );
+  }
+
+  for (const key of ['anyOf', 'oneOf', 'allOf'] as const) {
+    if (Array.isArray(schema[key])) {
+      transformed[key] = schema[key].map(value =>
+        isSchemaRecord(value) ? transformSchema(value) : value
+      );
+    }
+  }
+
+  if (Array.isArray(schema.items)) {
+    transformed.items = schema.items.map(value =>
+      isSchemaRecord(value) ? transformSchema(value) : value
+    );
+  } else if (isSchemaRecord(schema.items)) {
+    transformed.items = transformSchema(schema.items);
+  }
+
+  return transformed;
+};
+
+export const normalizeFileUploadSchema = (schema: JsonSchema): JsonSchema =>
+  isSchemaRecord(schema) ? transformSchema(schema) : schema;
+
+export const schemaHasFileUploadable = (schema: JsonSchema | undefined): boolean => {
+  if (!schema) return false;
+  if (schema.file_uploadable === true) return true;
+
+  if (isSchemaRecord(schema.properties)) {
+    for (const property of Object.values(schema.properties)) {
+      if (isSchemaRecord(property) && schemaHasFileUploadable(property)) {
+        return true;
+      }
+    }
+  }
+
+  for (const variant of getSchemaVariants(schema)) {
+    if (schemaHasFileUploadable(variant)) {
+      return true;
+    }
+  }
+
+  if (Array.isArray(schema.items)) {
+    return schema.items.some(item => isSchemaRecord(item) && schemaHasFileUploadable(item));
+  }
+
+  if (isSchemaRecord(schema.items)) {
+    return schemaHasFileUploadable(schema.items);
+  }
+
+  return false;
+};
+
+export const findFileUploadablePaths = (
+  schema: JsonSchema | undefined,
+  basePath: ReadonlyArray<string> = []
+): ReadonlyArray<ReadonlyArray<string>> => {
+  if (!schema) return [];
+
+  if (schema.file_uploadable === true) {
+    return [basePath];
+  }
+
+  const directPropertyPaths = isSchemaRecord(schema.properties)
+    ? Object.entries(schema.properties).flatMap(([key, property]) =>
+        isSchemaRecord(property) ? findFileUploadablePaths(property, [...basePath, key]) : []
+      )
+    : [];
+
+  const variantPaths = getSchemaVariants(schema).flatMap(variant =>
+    findFileUploadablePaths(variant, basePath)
+  );
+
+  const itemPaths = Array.isArray(schema.items)
+    ? schema.items.flatMap(item =>
+        isSchemaRecord(item) ? findFileUploadablePaths(item, basePath) : []
+      )
+    : isSchemaRecord(schema.items)
+      ? findFileUploadablePaths(schema.items, basePath)
+      : [];
+
+  const seen = new Set<string>();
+  return [...directPropertyPaths, ...variantPaths, ...itemPaths].filter(pathParts => {
+    const key = pathParts.join('.');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const readFileFromUrl = async (path: Path.Path, url: string) => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new ToolFileUploadError({
+      message: `Failed to fetch file: ${response.statusText}`,
+      reason: 'source-fetch',
+      status: response.status,
+    });
+  }
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const parsedUrl = new URL(url);
+  const fileName = path.basename(parsedUrl.pathname) || `file-${Date.now()}`;
+
+  return {
+    bytes,
+    fileName,
+    mimeType: response.headers.get('content-type') || 'application/octet-stream',
+  };
+};
+
+// Runs the FileSystem read to completion for the plain-async pipeline above.
+// A failed read rejects with the underlying platform error (not a FiberFailure
+// wrapper), matching this module's throw-based error contract.
+const readLocalFileBytes = (fs: FileSystem.FileSystem, filePath: string): Promise<Uint8Array> =>
+  Effect.runPromiseExit(fs.readFile(filePath)).then(exit =>
+    Exit.match(exit, {
+      onFailure: cause => Promise.reject<Uint8Array>(Cause.squash(cause)),
+      onSuccess: bytes => Promise.resolve(bytes),
+    })
+  );
+
+const readFileFromDisk = async (fs: FileSystem.FileSystem, path: Path.Path, filePath: string) => {
+  // Enforce the sensitive-path denylist at the lowest-level local read, so any
+  // caller of this reader (not just `uploadToolInputFiles`) is protected. This
+  // is the single canonical guard shared with `@composio/core`; without it the
+  // CLI's upload path would silently exfiltrate ~/.ssh/id_rsa, ~/.aws/credentials,
+  // .env files, etc. (issue #3746 / GHSA-hp3h-89pf-5q58). URLs and File objects
+  // are intentionally not path-checked, matching the core SDK.
+  //
+  // The CLI intentionally exposes NO opt-out for this guard (unlike the core/Python
+  // SDKs' `sensitiveFileUploadProtection` flag): the primary attack vector is an
+  // agent that has been prompt-injected into supplying its own tool arguments, so a
+  // `--force`/env override would hand that attacker a trivial bypass. Pass a
+  // CLI-appropriate remediation so the error does not advertise an SDK-only opt-out.
+  assertSafeFileUploadPath(filePath, {
+    remediation:
+      'The Composio CLI always enforces this denylist and has no opt-out. To upload this ' +
+      'file, copy it to a location outside sensitive directories (e.g. ~/.ssh, ~/.aws) and ' +
+      'pass the copy instead.',
+  });
+  return {
+    // Copy into a fresh ArrayBuffer-backed view: `fetch` bodies reject the
+    // wider ArrayBufferLike-backed Uint8Array that FileSystem returns.
+    bytes: new Uint8Array(await readLocalFileBytes(fs, filePath)),
+    fileName: path.basename(filePath),
+    mimeType: 'application/octet-stream',
+  };
+};
+
+const readUploadSource = async (
+  fs: FileSystem.FileSystem,
+  path: Path.Path,
+  file: string | File
+) => {
+  if (isFileLike(file)) {
+    return {
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      fileName: file.name || `file-${Date.now()}`,
+      mimeType: file.type || 'application/octet-stream',
+    };
+  }
+
+  if (typeof file === 'string' && /^https?:\/\//i.test(file)) {
+    return readFileFromUrl(path, file);
+  }
+
+  if (typeof file === 'string') {
+    return readFileFromDisk(fs, path, file);
+  }
+
+  throw new ToolFileUploadError({
+    message: 'Unsupported upload source',
+    reason: 'unsupported-source',
+  });
+};
+
+const uploadFile = async (params: {
+  readonly fs: FileSystem.FileSystem;
+  readonly path: Path.Path;
+  readonly file: string | File;
+  readonly toolSlug: string;
+  readonly toolkitSlug: string;
+  readonly client: RawComposioClient;
+}) => {
+  const fileData = await readUploadSource(params.fs, params.path, params.file);
+  // eslint-disable-next-line no-restricted-imports -- MD5 for the presigned-upload checksum is not available in Web Crypto
+  const { createHash } = await import('node:crypto');
+  const md5 = createHash('md5').update(fileData.bytes).digest('hex');
+  const presigned = await params.client.files.createPresignedURL({
+    filename: fileData.fileName,
+    mimetype: fileData.mimeType,
+    md5,
+    tool_slug: params.toolSlug,
+    toolkit_slug: params.toolkitSlug,
+  });
+
+  const uploadResponse = await fetch(presigned.new_presigned_url, {
+    method: 'PUT',
+    body: fileData.bytes,
+    headers: {
+      'Content-Type': fileData.mimeType,
+      'Content-Length': fileData.bytes.byteLength.toString(),
+    },
+  });
+
+  if (!uploadResponse.ok) {
+    throw new ToolFileUploadError({
+      message: `Failed to upload file to S3: ${uploadResponse.statusText}`,
+      reason: 'upload',
+      status: uploadResponse.status,
+    });
+  }
+
+  return {
+    name: fileData.fileName,
+    mimetype: fileData.mimeType,
+    s3key: presigned.key,
+  };
+};
+
+const hydrateFileUploads = async (
+  value: unknown,
+  schema: JsonSchema | undefined,
+  ctx: {
+    readonly fs: FileSystem.FileSystem;
+    readonly path: Path.Path;
+    readonly toolSlug: string;
+    readonly toolkitSlug: string;
+    readonly client: RawComposioClient;
+  }
+): Promise<unknown> => {
+  if (schema?.file_uploadable === true) {
+    if (typeof value !== 'string' && !isFileLike(value)) {
+      return value;
+    }
+
+    return uploadFile({
+      fs: ctx.fs,
+      path: ctx.path,
+      file: value,
+      toolSlug: ctx.toolSlug,
+      toolkitSlug: ctx.toolkitSlug,
+      client: ctx.client,
+    });
+  }
+
+  const uploadableVariants = getSchemaVariants(schema).filter(schemaHasFileUploadable);
+  if (uploadableVariants.length > 0) {
+    let nextValue = value;
+    for (const variant of uploadableVariants) {
+      nextValue = await hydrateFileUploads(nextValue, variant, ctx);
+    }
+    return nextValue;
+  }
+
+  if (isSchemaRecord(schema?.properties) && Predicate.isRecord(value)) {
+    const properties = schema.properties;
+    const entries = await Promise.all(
+      Object.entries(value).map(async ([key, entryValue]) => [
+        key,
+        await hydrateFileUploads(
+          entryValue,
+          isSchemaRecord(properties[key]) ? properties[key] : undefined,
+          ctx
+        ),
+      ])
+    );
+    return Object.fromEntries(entries);
+  }
+
+  if (schema?.type === 'array' && Array.isArray(value) && schema.items) {
+    const itemSchema = Array.isArray(schema.items)
+      ? schema.items.find(isSchemaRecord)
+      : isSchemaRecord(schema.items)
+        ? schema.items
+        : undefined;
+
+    return Promise.all(value.map(item => hydrateFileUploads(item, itemSchema, ctx)));
+  }
+
+  return value;
+};
+
+export const uploadToolInputFiles = async (params: {
+  readonly fs: FileSystem.FileSystem;
+  readonly path: Path.Path;
+  readonly toolSlug: string;
+  readonly arguments_: Record<string, unknown>;
+  readonly inputSchema: JsonSchema;
+  readonly client: RawComposioClient;
+  readonly toolkitSlug?: string;
+}): Promise<Record<string, unknown>> => {
+  if (!schemaHasFileUploadable(params.inputSchema)) {
+    return params.arguments_;
+  }
+
+  const hydrated = await hydrateFileUploads(params.arguments_, params.inputSchema, {
+    fs: params.fs,
+    path: params.path,
+    toolSlug: params.toolSlug,
+    toolkitSlug: params.toolkitSlug ?? guessToolkitFromToolSlug(params.toolSlug) ?? 'unknown',
+    client: params.client,
+  });
+
+  return Predicate.isRecord(hydrated) ? hydrated : params.arguments_;
+};

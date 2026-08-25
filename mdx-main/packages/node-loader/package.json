@@ -1,0 +1,63 @@
+{
+  "name": "@mdx-js/node-loader",
+  "version": "3.1.1",
+  "description": "Node.js loader for MDX",
+  "license": "MIT",
+  "keywords": [
+    "jsx",
+    "loader",
+    "markdown",
+    "mdx",
+    "node",
+    "react",
+    "remark"
+  ],
+  "homepage": "https://mdxjs.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mdx-js/mdx",
+    "directory": "packages/node-loader/"
+  },
+  "bugs": "https://github.com/mdx-js/mdx/issues",
+  "funding": {
+    "type": "opencollective",
+    "url": "https://opencollective.com/unified"
+  },
+  "author": "John Otander <johnotander@gmail.com> (https://johno.com)",
+  "contributors": [
+    "Titus Wormer <tituswormer@gmail.com> (https://wooorm.com)"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": "./index.js",
+  "imports": {
+    "#condition": {
+      "development": "./lib/condition.development.js",
+      "default": "./lib/condition.default.js"
+    }
+  },
+  "files": [
+    "lib/",
+    "index.d.ts.map",
+    "index.d.ts",
+    "index.js"
+  ],
+  "dependencies": {
+    "@mdx-js/mdx": "^3.0.0",
+    "source-map": "^0.7.0",
+    "vfile-reporter": "^8.0.0",
+    "vfile": "^6.0.0"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "npm run test-coverage",
+    "test-api": "node --conditions development --enable-source-maps --loader=@mdx-js/node-loader test/index.js",
+    "test-coverage": "c8 --100 --reporter lcov npm run test-api"
+  },
+  "xo": {
+    "prettier": true,
+    "rules": {
+      "n/file-extension-in-import": "off"
+    }
+  }
+}

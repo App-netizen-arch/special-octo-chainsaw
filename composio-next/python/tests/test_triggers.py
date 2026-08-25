@@ -1,0 +1,1791 @@
+"""Tests for Triggers class."""
+
+import base64
+import hashlib
+import hmac
+import json
+import threading
+import time
+from datetime import datetime, timezone
+from unittest.mock import Mock, patch
+
+import httpx
+import pytest
+from composio_client import NotFoundError, omit
+
+from composio import exceptions
+from composio.core.models.triggers import (
+    _MAX_LOGGED_FRAME_CHARS,
+    ComposioSDKTimeoutError,
+    Triggers,
+    TriggerSubscription,
+    WebhookVersion,
+    _SubcriptionBuilder,
+    _truncate_frame,
+)
+
+
+class TestTriggers:
+    """Test cases for Triggers class."""
+
+    @pytest.fixture
+    def mock_client(self):
+        """Create a mock HTTP client."""
+        client = Mock()
+        client.triggers_types = Mock()
+        client.trigger_instances = Mock()
+        client.trigger_instances.manage = Mock()
+        client.connected_accounts = Mock()
+        return client
+
+    @pytest.fixture
+    def triggers(self, mock_client):
+        """Create a Triggers instance with default toolkit versions."""
+        return Triggers(client=mock_client)
+
+    @pytest.fixture
+    def triggers_with_versions(self, mock_client):
+        """Create a Triggers instance with custom toolkit versions."""
+        return Triggers(
+            client=mock_client,
+            toolkit_versions={"github": "12082025_00", "slack": "10082025_01"},
+        )
+
+    @pytest.fixture
+    def mock_trigger_type(self):
+        """Mock trigger type response."""
+        mock_type = Mock()
+        mock_type.slug = "GITHUB_COMMIT_EVENT"
+        mock_type.name = "GitHub Commit Event"
+        mock_type.description = "Triggered when a commit is pushed"
+        mock_type.toolkit = Mock()
+        mock_type.toolkit.slug = "github"
+        mock_type.toolkit.name = "GitHub"
+        return mock_type
+
+    @pytest.fixture
+    def mock_trigger_instances(self):
+        """Mock trigger instances list response."""
+        mock_response = Mock()
+        mock_response.items = [
+            Mock(
+                id="trigger-1",
+                connected_account_id="conn-123",
+                disabled_at=None,
+                state={"lastRun": "2024-01-01T00:00:00Z"},
+                trigger_config={"webhook_url": "https://example.com/webhook"},
+                trigger_name="GITHUB_COMMIT_EVENT",
+                updated_at="2024-01-01T00:00:00Z",
+                trigger_data='{"event":"push"}',
+            ),
+        ]
+        mock_response.next_cursor = None
+        mock_response.total_pages = 1
+        return mock_response
+
+    def test_init_with_default_versions(self, mock_client):
+        """Test Triggers initialization with default toolkit versions."""
+        triggers = Triggers(client=mock_client)
+
+        assert triggers._client == mock_client
+        assert triggers._toolkit_versions is None
+        assert callable(triggers.list_enum)
+        assert callable(triggers.delete)
+        assert callable(triggers.enable)
+        assert callable(triggers.disable)
+
+    def test_init_with_custom_versions(self, mock_client):
+        """Test Triggers initialization with custom toolkit versions."""
+        custom_versions = {"github": "12082025_00", "slack": "10082025_01"}
+        triggers = Triggers(client=mock_client, toolkit_versions=custom_versions)
+
+        assert triggers._toolkit_versions == custom_versions
+
+    def test_set_webhook_subscription_creates_when_none_exists(
+        self, triggers, mock_client
+    ):
+        """Test set_webhook_subscription creates a subscription when none exists."""
+        webhook_url = "https://example.com/webhooks/composio"
+        raw_subscription = {
+            "id": "sub_123",
+            "webhook_url": webhook_url,
+            "version": "V3",
+            "enabled_events": ["composio.trigger.message"],
+        }
+        mock_client.get.return_value = {"items": []}
+        mock_client.post.return_value = raw_subscription
+
+        result = triggers.set_webhook_subscription(webhook_url=webhook_url)
+
+        mock_client.get.assert_called_once_with(
+            "/api/v3.1/webhook_subscriptions",
+            cast_to=object,
+            options={"params": {"limit": 1}},
+        )
+        mock_client.post.assert_called_once_with(
+            "/api/v3.1/webhook_subscriptions",
+            cast_to=object,
+            body={
+                "webhook_url": webhook_url,
+                "enabled_events": ["composio.trigger.message"],
+                "version": "V3",
+            },
+        )
+        mock_client.patch.assert_not_called()
+        assert result == raw_subscription
+
+    def test_set_webhook_subscription_updates_first_existing(
+        self, triggers, mock_client
+    ):
+        """Test set_webhook_subscription updates the first subscription when one exists."""
+        webhook_url = "https://example.com/webhooks/composio"
+        raw_subscription = {
+            "id": "sub_123",
+            "webhook_url": webhook_url,
+            "version": "V3",
+            "enabled_events": [
+                "composio.trigger.message",
+                "composio.connected_account.expired",
+            ],
+        }
+        mock_client.get.return_value = {"items": [{"id": "sub_123"}]}
+        mock_client.patch.return_value = raw_subscription
+
+        result = triggers.set_webhook_subscription(
+            webhook_url=webhook_url,
+            enabled_events=[
+                "composio.trigger.message",
+                "composio.connected_account.expired",
+            ],
+            version="V3",
+        )
+
+        mock_client.patch.assert_called_once_with(
+            "/api/v3.1/webhook_subscriptions/sub_123",
+            cast_to=object,
+            body={
+                "webhook_url": webhook_url,
+                "enabled_events": [
+                    "composio.trigger.message",
+                    "composio.connected_account.expired",
+                ],
+                "version": "V3",
+            },
+        )
+        mock_client.post.assert_not_called()
+        assert result == raw_subscription
+
+    def test_set_webhook_subscription_rejects_empty_events(self, triggers):
+        """Test set_webhook_subscription rejects empty enabled_events."""
+        with pytest.raises(exceptions.ValidationError):
+            triggers.set_webhook_subscription(
+                webhook_url="https://example.com/webhooks/composio",
+                enabled_events=[],
+            )
+
+    def test_get_type_with_default_versions(
+        self, triggers, mock_client, mock_trigger_type
+    ):
+        """Test get_type with default toolkit versions."""
+        mock_client.triggers_types.retrieve.return_value = mock_trigger_type
+
+        result = triggers.get_type("GITHUB_COMMIT_EVENT")
+
+        # When toolkit_versions is None, it should be converted to omit
+        call_kwargs = mock_client.triggers_types.retrieve.call_args.kwargs
+        assert call_kwargs["slug"] == "GITHUB_COMMIT_EVENT"
+        assert call_kwargs["toolkit_versions"] is omit
+        assert result == mock_trigger_type
+
+    def test_get_type_with_custom_versions(
+        self, triggers_with_versions, mock_client, mock_trigger_type
+    ):
+        """Test get_type with custom toolkit versions."""
+        mock_client.triggers_types.retrieve.return_value = mock_trigger_type
+        custom_versions = {"github": "12082025_00", "slack": "10082025_01"}
+
+        result = triggers_with_versions.get_type("GITHUB_COMMIT_EVENT")
+
+        mock_client.triggers_types.retrieve.assert_called_once_with(
+            slug="GITHUB_COMMIT_EVENT",
+            toolkit_versions=custom_versions,
+        )
+        assert result == mock_trigger_type
+
+    def test_list_active_without_filters(
+        self, triggers, mock_client, mock_trigger_instances
+    ):
+        """Test list_active without any filters."""
+        mock_client.trigger_instances.list_active.return_value = mock_trigger_instances
+
+        result = triggers.list_active()
+
+        mock_client.trigger_instances.list_active.assert_called_once()
+        assert result == mock_trigger_instances
+
+    def test_list_active_with_filters(
+        self, triggers, mock_client, mock_trigger_instances
+    ):
+        """Test list_active with filters."""
+        mock_client.trigger_instances.list_active.return_value = mock_trigger_instances
+
+        result = triggers.list_active(
+            trigger_ids=["trigger-1"],
+            trigger_names=["GITHUB_COMMIT_EVENT"],
+            auth_config_ids=["auth-123"],
+            connected_account_ids=["conn-123"],
+            show_disabled=False,
+            limit=10,
+            cursor="cursor-abc",
+        )
+
+        mock_client.trigger_instances.list_active.assert_called_once()
+        call_kwargs = mock_client.trigger_instances.list_active.call_args.kwargs
+        assert call_kwargs["query_trigger_ids_1"] == ["trigger-1"]
+        assert call_kwargs["query_trigger_names_1"] == ["GITHUB_COMMIT_EVENT"]
+        assert call_kwargs["query_auth_config_ids_1"] == ["auth-123"]
+        assert call_kwargs["query_connected_account_ids_1"] == ["conn-123"]
+        assert call_kwargs["query_show_disabled_1"] is False
+        assert call_kwargs["limit"] == 10
+        assert call_kwargs["cursor"] == "cursor-abc"
+        assert result == mock_trigger_instances
+
+    def test_list_trigger_types_without_filters(self, triggers, mock_client):
+        """Test list trigger types without filters."""
+        mock_response = Mock()
+        mock_client.triggers_types.list.return_value = mock_response
+
+        result = triggers.list()
+
+        mock_client.triggers_types.list.assert_called_once()
+        assert result == mock_response
+
+    def test_list_trigger_types_with_filters(self, triggers_with_versions, mock_client):
+        """Test list trigger types with filters and custom versions."""
+        mock_response = Mock()
+        mock_client.triggers_types.list.return_value = mock_response
+        custom_versions = {"github": "12082025_00", "slack": "10082025_01"}
+
+        result = triggers_with_versions.list(
+            cursor="cursor-123",
+            limit=10,
+            toolkit_slugs=["github", "slack"],
+        )
+
+        mock_client.triggers_types.list.assert_called_once()
+        call_kwargs = mock_client.triggers_types.list.call_args.kwargs
+        assert call_kwargs["cursor"] == "cursor-123"
+        assert call_kwargs["limit"] == 10
+        assert call_kwargs["toolkit_slugs"] == ["github", "slack"]
+        assert call_kwargs["toolkit_versions"] == custom_versions
+        assert result == mock_response
+
+    def test_create_with_connected_account_id(self, triggers, mock_client):
+        """Test create trigger with connected_account_id."""
+        mock_response = Mock()
+        mock_response.trigger_id = "trigger-123"
+        mock_client.trigger_instances.upsert.return_value = mock_response
+
+        result = triggers.create(
+            slug="GITHUB_COMMIT_EVENT",
+            connected_account_id="conn-123",
+            trigger_config={"webhook_url": "https://example.com/webhook"},
+        )
+
+        # No extra lookup when an explicit connection is pinned.
+        mock_client.connected_accounts.list.assert_not_called()
+        mock_client.trigger_instances.upsert.assert_called_once()
+        call_kwargs = mock_client.trigger_instances.upsert.call_args.kwargs
+        assert call_kwargs["slug"] == "GITHUB_COMMIT_EVENT"
+        assert call_kwargs["connected_account_id"] == "conn-123"
+        assert call_kwargs["body_trigger_config_1"] == {
+            "webhook_url": "https://example.com/webhook"
+        }
+        assert call_kwargs["toolkit_versions"] is None
+        # No user_id supplied → omitted from the request (native kwarg, not extra_body).
+        assert call_kwargs["user_id"] is omit
+        assert result == mock_response
+
+    def test_create_with_user_id(self, triggers, mock_client):
+        """Test create trigger with user_id only.
+
+        The backend resolves the connection from ``user_id``, so the SDK passes
+        it straight through and no longer lists connected accounts.
+        """
+        mock_response = Mock()
+        mock_response.trigger_id = "trigger-123"
+        mock_client.trigger_instances.upsert.return_value = mock_response
+
+        result = triggers.create(
+            slug="GITHUB_COMMIT_EVENT",
+            user_id="user-123",
+            trigger_config={"webhook_url": "https://example.com/webhook"},
+        )
+
+        # The SDK no longer lists connected accounts to resolve the connection,
+        # but it still validates the slug up-front (parity with the TS SDK).
+        mock_client.connected_accounts.list.assert_not_called()
+        mock_client.triggers_types.retrieve.assert_called_once()
+
+        mock_client.trigger_instances.upsert.assert_called_once()
+        call_kwargs = mock_client.trigger_instances.upsert.call_args.kwargs
+        assert call_kwargs["slug"] == "GITHUB_COMMIT_EVENT"
+        # No explicit connection pinned → omitted; user_id is sent as a native kwarg.
+        assert call_kwargs["connected_account_id"] is omit
+        assert call_kwargs["user_id"] == "user-123"
+        assert call_kwargs["body_trigger_config_1"] == {
+            "webhook_url": "https://example.com/webhook"
+        }
+        assert call_kwargs["toolkit_versions"] is None
+        assert result == mock_response
+
+    def test_create_with_user_id_and_connected_account_id(self, triggers, mock_client):
+        """Test create trigger with both user_id and a pinned connected_account_id.
+
+        When a connection is pinned and 2FA is enabled, the backend validates the
+        connection is owned by ``user_id``. Both values are forwarded natively
+        (no ``extra_body``). Mirrors the TS ``create`` test.
+        """
+        mock_response = Mock()
+        mock_response.trigger_id = "trigger-123"
+        mock_client.trigger_instances.upsert.return_value = mock_response
+
+        result = triggers.create(
+            slug="GITHUB_COMMIT_EVENT",
+            user_id="user-123",
+            connected_account_id="conn-123",
+            trigger_config={"webhook_url": "https://example.com/webhook"},
+        )
+
+        mock_client.connected_accounts.list.assert_not_called()
+        mock_client.trigger_instances.upsert.assert_called_once()
+        call_kwargs = mock_client.trigger_instances.upsert.call_args.kwargs
+        assert call_kwargs["slug"] == "GITHUB_COMMIT_EVENT"
+        assert call_kwargs["connected_account_id"] == "conn-123"
+        assert call_kwargs["user_id"] == "user-123"
+        assert call_kwargs["body_trigger_config_1"] == {
+            "webhook_url": "https://example.com/webhook"
+        }
+        assert result == mock_response
+
+    def test_create_raises_trigger_type_not_found_for_unknown_slug(
+        self, triggers, mock_client
+    ):
+        """An unknown slug surfaces as TriggerTypeNotFound (parity with the TS SDK)."""
+        request = httpx.Request("GET", "https://backend.composio.dev")
+        response = httpx.Response(404, request=request)
+        mock_client.triggers_types.retrieve.side_effect = NotFoundError(
+            "not found", response=response, body=None
+        )
+
+        with pytest.raises(exceptions.TriggerTypeNotFound):
+            triggers.create(slug="UNKNOWN_TRIGGER", user_id="user-123")
+
+        mock_client.trigger_instances.upsert.assert_not_called()
+
+    def test_create_treats_blank_user_id_as_missing(self, triggers, mock_client):
+        """A blank user_id is rejected like a missing one, before any request."""
+        with pytest.raises(exceptions.InvalidParams):
+            triggers.create(slug="GITHUB_COMMIT_EVENT", user_id="   ")
+
+        mock_client.triggers_types.retrieve.assert_not_called()
+        mock_client.trigger_instances.upsert.assert_not_called()
+
+    def test_create_with_custom_toolkit_versions(
+        self, triggers_with_versions, mock_client
+    ):
+        """Test create trigger with custom toolkit versions."""
+        mock_response = Mock()
+        mock_response.trigger_id = "trigger-123"
+        mock_client.trigger_instances.upsert.return_value = mock_response
+        custom_versions = {"github": "12082025_00", "slack": "10082025_01"}
+
+        result = triggers_with_versions.create(
+            slug="GITHUB_COMMIT_EVENT",
+            connected_account_id="conn-123",
+            trigger_config={"webhook_url": "https://example.com/webhook"},
+        )
+
+        mock_client.trigger_instances.upsert.assert_called_once()
+        call_kwargs = mock_client.trigger_instances.upsert.call_args.kwargs
+        assert call_kwargs["slug"] == "GITHUB_COMMIT_EVENT"
+        assert call_kwargs["connected_account_id"] == "conn-123"
+        assert call_kwargs["body_trigger_config_1"] == {
+            "webhook_url": "https://example.com/webhook"
+        }
+        assert call_kwargs["toolkit_versions"] == custom_versions
+        assert result == mock_response
+
+    def test_create_without_user_id_or_connected_account_raises_error(
+        self, triggers, mock_client
+    ):
+        """Test create trigger without user_id or connected_account_id raises error."""
+        with pytest.raises(exceptions.InvalidParams) as exc_info:
+            triggers.create(
+                slug="GITHUB_COMMIT_EVENT",
+                trigger_config={"webhook_url": "https://example.com/webhook"},
+            )
+
+        assert "please provide valid `connected_account_id` or `user_id`" in str(
+            exc_info.value
+        )
+
+    def test_enable_trigger(self, triggers, mock_client):
+        """Test enable trigger."""
+        mock_response = Mock()
+        mock_client.trigger_instances.manage.update.return_value = mock_response
+
+        result = triggers.enable(trigger_id="trigger-123")
+
+        mock_client.trigger_instances.manage.update.assert_called_once_with(
+            trigger_id="trigger-123",
+            status="enable",
+        )
+        assert result == mock_response
+
+    def test_disable_trigger(self, triggers, mock_client):
+        """Test disable trigger."""
+        mock_response = Mock()
+        mock_client.trigger_instances.manage.update.return_value = mock_response
+
+        result = triggers.disable(trigger_id="trigger-123")
+
+        mock_client.trigger_instances.manage.update.assert_called_once_with(
+            trigger_id="trigger-123",
+            status="disable",
+        )
+        assert result == mock_response
+
+    def test_delete_trigger(self, triggers, mock_client):
+        """Test delete trigger."""
+        mock_response = Mock()
+        mock_client.trigger_instances.manage.delete.return_value = mock_response
+
+        result = triggers.delete(trigger_id="trigger-123")
+
+        mock_client.trigger_instances.manage.delete.assert_called_once_with(
+            trigger_id="trigger-123"
+        )
+        assert result == mock_response
+
+    def test_list_enum(self, triggers, mock_client):
+        """Test list_enum method."""
+        mock_response = Mock()
+        mock_response.enum = ["GITHUB_COMMIT_EVENT", "SLACK_MESSAGE_RECEIVED"]
+        mock_client.triggers_types.retrieve_enum.return_value = mock_response
+
+        result = triggers.list_enum()
+
+        mock_client.triggers_types.retrieve_enum.assert_called_once()
+        assert result == mock_response
+
+    def test_subscribe(self, triggers, mock_client):
+        """Test subscribe method."""
+        with patch(
+            "composio.core.models.triggers._SubcriptionBuilder"
+        ) as mock_builder_class:
+            mock_builder = Mock()
+            mock_subscription = Mock()
+            mock_builder.connect.return_value = mock_subscription
+            mock_builder_class.return_value = mock_builder
+
+            result = triggers.subscribe(timeout=20.0)
+
+            mock_builder_class.assert_called_once_with(client=mock_client)
+            mock_builder.connect.assert_called_once_with(timeout=20.0)
+            assert result == mock_subscription
+
+    def test_subscribe_with_default_timeout(self, triggers, mock_client):
+        """Test subscribe method with default timeout."""
+        with patch(
+            "composio.core.models.triggers._SubcriptionBuilder"
+        ) as mock_builder_class:
+            mock_builder = Mock()
+            mock_subscription = Mock()
+            mock_builder.connect.return_value = mock_subscription
+            mock_builder_class.return_value = mock_builder
+
+            result = triggers.subscribe()
+
+            mock_builder.connect.assert_called_once_with(timeout=15.0)
+            assert result == mock_subscription
+
+
+class TestVerifyWebhook:
+    """Test cases for verify_webhook method."""
+
+    @pytest.fixture
+    def mock_client(self):
+        """Create a mock HTTP client."""
+        client = Mock()
+        client.triggers_types = Mock()
+        client.trigger_instances = Mock()
+        client.trigger_instances.manage = Mock()
+        client.connected_accounts = Mock()
+        return client
+
+    @pytest.fixture
+    def triggers(self, mock_client):
+        """Create a Triggers instance."""
+        return Triggers(client=mock_client)
+
+    @pytest.fixture
+    def test_secret(self):
+        """Test webhook secret."""
+        return "test-webhook-secret-12345"
+
+    @pytest.fixture
+    def test_webhook_id(self):
+        """Test webhook ID."""
+        return "msg_test123"
+
+    @pytest.fixture
+    def test_timestamp(self):
+        """Test webhook timestamp (current time in Unix seconds)."""
+        return str(int(time.time()))
+
+    @pytest.fixture
+    def mock_v1_payload(self):
+        """Create mock V1 webhook payload."""
+        return {
+            "trigger_name": "GITHUB_PUSH_EVENT",
+            "connection_id": "conn-123",
+            "trigger_id": "trigger-123",
+            "payload": {"action": "push", "repository": "test-repo"},
+            "log_id": "log-123",
+        }
+
+    @pytest.fixture
+    def mock_v2_payload(self):
+        """Create mock V2 webhook payload."""
+        return {
+            "type": "github_push_event",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "log_id": "log-123",
+            "data": {
+                "connection_id": "conn-123",
+                "connection_nano_id": "conn-nano-123",
+                "trigger_nano_id": "trigger-nano-123",
+                "trigger_id": "trigger-123",
+                "user_id": "user-456",
+                "action": "push",
+                "repository": "test-repo",
+            },
+        }
+
+    @pytest.fixture
+    def mock_v3_payload(self):
+        """Create mock V3 webhook payload."""
+        return {
+            "id": "evt-123",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "type": "composio.trigger.message",
+            "metadata": {
+                "log_id": "log-123",
+                "trigger_slug": "GITHUB_PUSH_EVENT",
+                "trigger_id": "trigger-nano-123",
+                "connected_account_id": "conn-nano-123",
+                "auth_config_id": "auth-nano-123",
+                "user_id": "user-456",
+            },
+            "data": {"action": "push", "repository": "test-repo"},
+        }
+
+    def create_signature(
+        self, webhook_id: str, timestamp: str, payload: str, secret: str
+    ) -> str:
+        """Helper to create a valid v1,base64 signature."""
+        to_sign = f"{webhook_id}.{timestamp}.{payload}"
+        signature_bytes = hmac.new(
+            key=secret.encode("utf-8"),
+            msg=to_sign.encode("utf-8"),
+            digestmod=hashlib.sha256,
+        ).digest()
+        return f"v1,{base64.b64encode(signature_bytes).decode('utf-8')}"
+
+    # Successful verification tests with V3 payload
+
+    def test_verify_webhook_v3_payload(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Test successful V3 webhook verification."""
+        payload = json.dumps(mock_v3_payload)
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, payload, test_secret
+        )
+
+        result = triggers.verify_webhook(
+            id=test_webhook_id,
+            payload=payload,
+            signature=signature,
+            timestamp=test_timestamp,
+            secret=test_secret,
+        )
+
+        assert result["version"] == WebhookVersion.V3
+        assert result["payload"]["trigger_slug"] == "GITHUB_PUSH_EVENT"
+        assert result["payload"]["user_id"] == "user-456"
+        assert result["raw_payload"] == mock_v3_payload
+
+    def test_verify_webhook_v3_normalizes_payload(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Test V3 payload normalization."""
+        payload = json.dumps(mock_v3_payload)
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, payload, test_secret
+        )
+
+        result = triggers.verify_webhook(
+            id=test_webhook_id,
+            payload=payload,
+            signature=signature,
+            timestamp=test_timestamp,
+            secret=test_secret,
+        )
+
+        assert (
+            result["payload"]["metadata"]["connected_account"]["id"] == "conn-nano-123"
+        )
+        assert (
+            result["payload"]["metadata"]["connected_account"]["auth_config_id"]
+            == "auth-nano-123"
+        )
+        assert (
+            result["payload"]["metadata"]["connected_account"]["user_id"] == "user-456"
+        )
+
+    def test_verify_webhook_v3_non_trigger_event_type(
+        self, triggers, test_secret, test_webhook_id, test_timestamp
+    ):
+        """Test V3 payload with non-trigger event type is detected as V3, not V2.
+
+        Uses realistic connection metadata (project_id, org_id) instead of
+        fabricated trigger metadata, verifying V3 detection works for events
+        with different metadata shapes.
+        """
+        payload_dict = {
+            "id": "msg_abc123",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "type": "composio.connected_account.expired",
+            "metadata": {
+                "project_id": "pr_koucdrMIwRsf",
+                "org_id": "4a4ded8f-d3ae-4dea-a229-c30234298b05",
+            },
+            "data": {
+                "toolkit": {"slug": "gmail"},
+                "id": "ca__IvSeEzEBjVt",
+                "user_id": "test-user",
+                "status": "EXPIRED",
+            },
+        }
+        payload = json.dumps(payload_dict)
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, payload, test_secret
+        )
+
+        result = triggers.verify_webhook(
+            id=test_webhook_id,
+            payload=payload,
+            signature=signature,
+            timestamp=test_timestamp,
+            secret=test_secret,
+        )
+
+        # Should be detected as V3, not fall back to V2
+        assert result["version"] == WebhookVersion.V3
+        assert result["raw_payload"] == payload_dict
+
+    # Successful verification with V2 payload
+
+    def test_verify_webhook_v2_payload(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v2_payload
+    ):
+        """Test successful V2 webhook verification."""
+        payload = json.dumps(mock_v2_payload)
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, payload, test_secret
+        )
+
+        result = triggers.verify_webhook(
+            id=test_webhook_id,
+            payload=payload,
+            signature=signature,
+            timestamp=test_timestamp,
+            secret=test_secret,
+        )
+
+        assert result["version"] == WebhookVersion.V2
+        assert result["payload"]["user_id"] == "user-456"
+
+    # Successful verification with V1 payload
+
+    def test_verify_webhook_v1_payload(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v1_payload
+    ):
+        """Test successful V1 webhook verification."""
+        payload = json.dumps(mock_v1_payload)
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, payload, test_secret
+        )
+
+        result = triggers.verify_webhook(
+            id=test_webhook_id,
+            payload=payload,
+            signature=signature,
+            timestamp=test_timestamp,
+            secret=test_secret,
+        )
+
+        assert result["version"] == WebhookVersion.V1
+        assert result["payload"]["trigger_slug"] == "GITHUB_PUSH_EVENT"
+        assert result["payload"]["id"] == "trigger-123"
+
+    # Tolerance tests
+
+    def test_verify_webhook_with_tolerance_zero(
+        self, triggers, test_secret, test_webhook_id, mock_v3_payload
+    ):
+        """Test webhook verification with tolerance set to 0 (skip timestamp validation)."""
+        # Use an old timestamp (1 hour ago)
+        old_timestamp = str(int(time.time()) - 3600)
+        payload = json.dumps(mock_v3_payload)
+        signature = self.create_signature(
+            test_webhook_id, old_timestamp, payload, test_secret
+        )
+
+        result = triggers.verify_webhook(
+            id=test_webhook_id,
+            payload=payload,
+            signature=signature,
+            timestamp=old_timestamp,
+            secret=test_secret,
+            tolerance=0,
+        )
+
+        assert result["version"] == WebhookVersion.V3
+
+    def test_verify_webhook_with_custom_tolerance(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Test webhook verification with custom tolerance."""
+        payload = json.dumps(mock_v3_payload)
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, payload, test_secret
+        )
+
+        result = triggers.verify_webhook(
+            id=test_webhook_id,
+            payload=payload,
+            signature=signature,
+            timestamp=test_timestamp,
+            secret=test_secret,
+            tolerance=600,  # 10 minutes
+        )
+
+        assert result is not None
+
+    # Signature verification error tests
+
+    def test_verify_webhook_empty_payload_raises_error(
+        self, triggers, test_secret, test_webhook_id, test_timestamp
+    ):
+        """Test that empty payload raises WebhookSignatureVerificationError."""
+        with pytest.raises(exceptions.WebhookSignatureVerificationError) as exc_info:
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload="",
+                signature="v1,somesignature",
+                timestamp=test_timestamp,
+                secret=test_secret,
+            )
+
+        assert "No webhook payload was provided" in str(exc_info.value)
+
+    def test_verify_webhook_empty_signature_raises_error(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Test that empty signature raises WebhookSignatureVerificationError."""
+        payload = json.dumps(mock_v3_payload)
+
+        with pytest.raises(exceptions.WebhookSignatureVerificationError) as exc_info:
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload=payload,
+                signature="",
+                timestamp=test_timestamp,
+                secret=test_secret,
+            )
+
+        assert "No signature header value was provided" in str(exc_info.value)
+
+    def test_verify_webhook_empty_secret_raises_error(
+        self, triggers, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Test that empty secret raises WebhookSignatureVerificationError."""
+        payload = json.dumps(mock_v3_payload)
+
+        with pytest.raises(exceptions.WebhookSignatureVerificationError) as exc_info:
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload=payload,
+                signature="v1,somesignature",
+                timestamp=test_timestamp,
+                secret="",
+            )
+
+        assert "No webhook secret was provided" in str(exc_info.value)
+
+    def test_verify_webhook_empty_webhook_id_raises_error(
+        self, triggers, test_secret, test_timestamp, mock_v3_payload
+    ):
+        """Test that empty webhook ID raises WebhookSignatureVerificationError."""
+        payload = json.dumps(mock_v3_payload)
+
+        with pytest.raises(exceptions.WebhookSignatureVerificationError) as exc_info:
+            triggers.verify_webhook(
+                id="",
+                payload=payload,
+                signature="v1,somesignature",
+                timestamp=test_timestamp,
+                secret=test_secret,
+            )
+
+        assert "No webhook ID was provided" in str(exc_info.value)
+
+    def test_verify_webhook_empty_timestamp_raises_error(
+        self, triggers, test_secret, test_webhook_id, mock_v3_payload
+    ):
+        """Test that empty timestamp raises WebhookPayloadError."""
+        payload = json.dumps(mock_v3_payload)
+
+        with pytest.raises(exceptions.WebhookPayloadError) as exc_info:
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload=payload,
+                signature="v1,somesignature",
+                timestamp="",
+                secret=test_secret,
+            )
+
+        assert "Invalid webhook timestamp" in str(exc_info.value)
+
+    def test_verify_webhook_invalid_signature_format_raises_error(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Test that signature without v1 prefix raises error."""
+        payload = json.dumps(mock_v3_payload)
+
+        with pytest.raises(exceptions.WebhookSignatureVerificationError) as exc_info:
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload=payload,
+                signature="invalid-signature-no-prefix",
+                timestamp=test_timestamp,
+                secret=test_secret,
+            )
+
+        assert "No valid v1 signature found" in str(exc_info.value)
+
+    def test_verify_webhook_invalid_signature_raises_error(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Test that invalid signature raises WebhookSignatureVerificationError."""
+        payload = json.dumps(mock_v3_payload)
+
+        with pytest.raises(exceptions.WebhookSignatureVerificationError) as exc_info:
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload=payload,
+                signature="v1,invalidbase64signature==",
+                timestamp=test_timestamp,
+                secret=test_secret,
+            )
+
+        assert "The signature provided is invalid" in str(exc_info.value)
+
+    def test_verify_webhook_wrong_secret_raises_error(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Test that signature created with different secret raises error."""
+        payload = json.dumps(mock_v3_payload)
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, payload, "different-secret"
+        )
+
+        with pytest.raises(exceptions.WebhookSignatureVerificationError) as exc_info:
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload=payload,
+                signature=signature,
+                timestamp=test_timestamp,
+                secret=test_secret,
+            )
+
+        assert "The signature provided is invalid" in str(exc_info.value)
+
+    def test_verify_webhook_modified_payload_raises_error(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Test that modified payload after signing raises error."""
+        original_payload = json.dumps(mock_v3_payload)
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, original_payload, test_secret
+        )
+
+        # Modify the payload
+        mock_v3_payload["data"] = {"modified": True}
+        modified_payload = json.dumps(mock_v3_payload)
+
+        with pytest.raises(exceptions.WebhookSignatureVerificationError):
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload=modified_payload,
+                signature=signature,
+                timestamp=test_timestamp,
+                secret=test_secret,
+            )
+
+    # Payload parsing error tests
+
+    def test_verify_webhook_invalid_json_raises_error(
+        self, triggers, test_secret, test_webhook_id, test_timestamp
+    ):
+        """Test that invalid JSON payload raises WebhookPayloadError."""
+        invalid_json = "not-valid-json{"
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, invalid_json, test_secret
+        )
+
+        with pytest.raises(exceptions.WebhookPayloadError) as exc_info:
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload=invalid_json,
+                signature=signature,
+                timestamp=test_timestamp,
+                secret=test_secret,
+            )
+
+        assert "Failed to parse webhook payload as JSON" in str(exc_info.value)
+
+    def test_verify_webhook_unrecognized_payload_raises_error(
+        self, triggers, test_secret, test_webhook_id, test_timestamp
+    ):
+        """Test that unrecognized payload format raises WebhookPayloadError."""
+        unknown_payload = json.dumps({"unknown": "format"})
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, unknown_payload, test_secret
+        )
+
+        with pytest.raises(exceptions.WebhookPayloadError) as exc_info:
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload=unknown_payload,
+                signature=signature,
+                timestamp=test_timestamp,
+                secret=test_secret,
+            )
+
+        assert "does not match any known version" in str(exc_info.value)
+
+    def test_verify_webhook_v3_missing_data_field_raises_error(
+        self, triggers, test_secret, test_webhook_id, test_timestamp
+    ):
+        """Test that V3-like payload missing 'data' field raises WebhookPayloadError.
+
+        This tests the fix for a potential KeyError crash when a malformed payload
+        has valid V3 markers (type, id, metadata) but is missing the required 'data' field.
+        """
+        # Payload with V3 markers but missing 'data' field
+        v3_like_payload_missing_data = {
+            "id": "evt-123",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "type": "composio.trigger.message",
+            "metadata": {
+                "log_id": "log-123",
+                "trigger_slug": "GITHUB_PUSH_EVENT",
+                "trigger_id": "trigger-nano-123",
+                "connected_account_id": "conn-nano-123",
+                "auth_config_id": "auth-nano-123",
+                "user_id": "user-456",
+            },
+            # Note: 'data' field is intentionally missing
+        }
+        payload = json.dumps(v3_like_payload_missing_data)
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, payload, test_secret
+        )
+
+        with pytest.raises(exceptions.WebhookPayloadError) as exc_info:
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload=payload,
+                signature=signature,
+                timestamp=test_timestamp,
+                secret=test_secret,
+            )
+
+        # Should be rejected as unrecognized format, not crash with KeyError
+        assert "does not match any known version" in str(exc_info.value)
+
+    # Timestamp validation tests
+
+    def test_verify_webhook_timestamp_within_tolerance(
+        self, triggers, test_secret, test_webhook_id, mock_v3_payload
+    ):
+        """Test that timestamp within tolerance passes validation."""
+        recent_timestamp = str(int(time.time()))
+        payload = json.dumps(mock_v3_payload)
+        signature = self.create_signature(
+            test_webhook_id, recent_timestamp, payload, test_secret
+        )
+
+        result = triggers.verify_webhook(
+            id=test_webhook_id,
+            payload=payload,
+            signature=signature,
+            timestamp=recent_timestamp,
+            secret=test_secret,
+            tolerance=300,
+        )
+
+        assert result is not None
+
+    def test_verify_webhook_timestamp_outside_tolerance_raises_error(
+        self, triggers, test_secret, test_webhook_id, mock_v3_payload
+    ):
+        """Test that timestamp outside tolerance raises error."""
+        # 10 minutes ago
+        old_timestamp = str(int(time.time()) - 600)
+        payload = json.dumps(mock_v3_payload)
+        signature = self.create_signature(
+            test_webhook_id, old_timestamp, payload, test_secret
+        )
+
+        with pytest.raises(exceptions.WebhookSignatureVerificationError) as exc_info:
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload=payload,
+                signature=signature,
+                timestamp=old_timestamp,
+                secret=test_secret,
+                tolerance=300,  # 5 minutes
+            )
+
+        assert "outside the allowed tolerance" in str(exc_info.value)
+
+    def test_verify_webhook_invalid_timestamp_format_raises_error(
+        self, triggers, test_secret, test_webhook_id, mock_v3_payload
+    ):
+        """Test that invalid timestamp format raises WebhookPayloadError."""
+        invalid_timestamp = "not-a-timestamp"
+        payload = json.dumps(mock_v3_payload)
+        signature = self.create_signature(
+            test_webhook_id, invalid_timestamp, payload, test_secret
+        )
+
+        with pytest.raises(exceptions.WebhookPayloadError) as exc_info:
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload=payload,
+                signature=signature,
+                timestamp=invalid_timestamp,
+                secret=test_secret,
+                tolerance=300,
+            )
+
+        assert "Invalid webhook timestamp" in str(exc_info.value)
+
+    # Security tests
+
+    def test_verify_webhook_uses_timing_safe_comparison(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Test that signature comparison is timing-safe."""
+        payload = json.dumps(mock_v3_payload)
+        valid_signature = self.create_signature(
+            test_webhook_id, test_timestamp, payload, test_secret
+        )
+
+        # Valid signature should work
+        result = triggers.verify_webhook(
+            id=test_webhook_id,
+            payload=payload,
+            signature=valid_signature,
+            timestamp=test_timestamp,
+            secret=test_secret,
+        )
+        assert result is not None
+
+        # Invalid signature with same format should fail
+        invalid_signature = "v1," + "a" * 44  # base64 SHA256 is 44 chars
+        with pytest.raises(exceptions.WebhookSignatureVerificationError):
+            triggers.verify_webhook(
+                id=test_webhook_id,
+                payload=payload,
+                signature=invalid_signature,
+                timestamp=test_timestamp,
+                secret=test_secret,
+            )
+
+    def test_verify_webhook_handles_unicode_payload(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Test that unicode in payload is handled correctly."""
+        mock_v3_payload["data"] = {"message": "你好世界 🌍 مرحبا"}
+        payload = json.dumps(mock_v3_payload, ensure_ascii=False)
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, payload, test_secret
+        )
+
+        result = triggers.verify_webhook(
+            id=test_webhook_id,
+            payload=payload,
+            signature=signature,
+            timestamp=test_timestamp,
+            secret=test_secret,
+        )
+
+        assert result["payload"]["payload"]["message"] == "你好世界 🌍 مرحبا"
+
+    def test_verify_webhook_handles_special_characters_in_secret(
+        self, triggers, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Test that special characters in secret are handled correctly."""
+        special_secret = "secret!@#$%^&*()_+-=[]{}|;:,.<>?"
+        payload = json.dumps(mock_v3_payload)
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, payload, special_secret
+        )
+
+        result = triggers.verify_webhook(
+            id=test_webhook_id,
+            payload=payload,
+            signature=signature,
+            timestamp=test_timestamp,
+            secret=special_secret,
+        )
+
+        assert result is not None
+
+    def test_verify_webhook_supports_multiple_signatures(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Test that multiple signatures in header are supported."""
+        payload = json.dumps(mock_v3_payload)
+        valid_signature = self.create_signature(
+            test_webhook_id, test_timestamp, payload, test_secret
+        )
+        # Multiple signatures space-separated
+        multiple_signatures = f"v1,invalidsig== {valid_signature}"
+
+        result = triggers.verify_webhook(
+            id=test_webhook_id,
+            payload=payload,
+            signature=multiple_signatures,
+            timestamp=test_timestamp,
+            secret=test_secret,
+        )
+
+        assert result is not None
+
+    # Error class tests
+
+    def test_webhook_signature_verification_error_is_trigger_error(self):
+        """Test that WebhookSignatureVerificationError inherits from TriggerError."""
+        error = exceptions.WebhookSignatureVerificationError("test")
+        assert isinstance(error, exceptions.TriggerError)
+
+    def test_webhook_payload_error_is_trigger_error(self):
+        """Test that WebhookPayloadError inherits from TriggerError."""
+        error = exceptions.WebhookPayloadError("test")
+        assert isinstance(error, exceptions.TriggerError)
+
+
+class TestParseWebhook:
+    """Test cases for the parse() webhook helper."""
+
+    @pytest.fixture
+    def mock_client(self):
+        """Create a mock HTTP client."""
+        client = Mock()
+        client.triggers_types = Mock()
+        client.trigger_instances = Mock()
+        client.trigger_instances.manage = Mock()
+        client.connected_accounts = Mock()
+        return client
+
+    @pytest.fixture
+    def triggers(self, mock_client):
+        """Create a Triggers instance."""
+        return Triggers(client=mock_client)
+
+    @pytest.fixture
+    def test_secret(self):
+        """Test webhook secret."""
+        return "test-webhook-secret-12345"
+
+    @pytest.fixture
+    def test_webhook_id(self):
+        """Test webhook ID."""
+        return "msg_test123"
+
+    @pytest.fixture
+    def test_timestamp(self):
+        """Test webhook timestamp (current time in Unix seconds)."""
+        return str(int(time.time()))
+
+    @pytest.fixture
+    def mock_v3_payload(self):
+        """Create mock V3 webhook payload."""
+        return {
+            "id": "evt-123",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "type": "composio.trigger.message",
+            "metadata": {
+                "log_id": "log-123",
+                "trigger_slug": "GITHUB_PUSH_EVENT",
+                "trigger_id": "trigger-nano-123",
+                "connected_account_id": "conn-nano-123",
+                "auth_config_id": "auth-nano-123",
+                "user_id": "user-456",
+            },
+            "data": {"action": "push", "repository": "test-repo"},
+        }
+
+    def create_signature(
+        self, webhook_id: str, timestamp: str, payload: str, secret: str
+    ) -> str:
+        """Helper to create a valid v1,base64 signature."""
+        to_sign = f"{webhook_id}.{timestamp}.{payload}"
+        signature_bytes = hmac.new(
+            key=secret.encode("utf-8"),
+            msg=to_sign.encode("utf-8"),
+            digestmod=hashlib.sha256,
+        ).digest()
+        return f"v1,{base64.b64encode(signature_bytes).decode('utf-8')}"
+
+    def test_parse_with_request_object_and_verify(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """Parse and verify from a framework-style request object."""
+        payload = json.dumps(mock_v3_payload)
+        signature = self.create_signature(
+            test_webhook_id, test_timestamp, payload, test_secret
+        )
+
+        request = Mock()
+        request.body = payload.encode("utf-8")
+        request.headers = {
+            "webhook-id": test_webhook_id,
+            "webhook-timestamp": test_timestamp,
+            "webhook-signature": signature,
+        }
+        # Avoid Mock auto-creating a callable get_data attribute.
+        del request.get_data
+
+        result = triggers.parse(request, verify_secret=test_secret)
+
+        assert result["version"] == WebhookVersion.V3
+        assert result["payload"]["trigger_slug"] == "GITHUB_PUSH_EVENT"
+        assert result["payload"]["payload"] == {
+            "action": "push",
+            "repository": "test-repo",
+        }
+
+    def test_parse_with_explicit_body_and_headers_no_verify(
+        self, triggers, mock_v3_payload
+    ):
+        """Parse without verifying using explicit body/headers kwargs."""
+        payload = json.dumps(mock_v3_payload)
+
+        result = triggers.parse(body=payload, headers={})
+
+        assert result["version"] == WebhookVersion.V3
+        assert result["payload"]["trigger_slug"] == "GITHUB_PUSH_EVENT"
+        assert result["payload"]["payload"] == {
+            "action": "push",
+            "repository": "test-repo",
+        }
+
+    def test_parse_bad_signature_raises(
+        self, triggers, test_secret, test_webhook_id, test_timestamp, mock_v3_payload
+    ):
+        """A bad signature with verify_secret raises a verification error."""
+        payload = json.dumps(mock_v3_payload)
+
+        with pytest.raises(exceptions.WebhookSignatureVerificationError):
+            triggers.parse(
+                body=payload,
+                headers={
+                    "webhook-id": test_webhook_id,
+                    "webhook-timestamp": test_timestamp,
+                    "webhook-signature": "v1,not-a-valid-signature",
+                },
+                verify_secret=test_secret,
+            )
+
+    def test_parse_missing_headers_with_verify_raises(
+        self, triggers, test_secret, mock_v3_payload
+    ):
+        """verify_secret set but missing signature headers raises ValidationError."""
+        payload = json.dumps(mock_v3_payload)
+
+        with pytest.raises(exceptions.ValidationError) as exc_info:
+            triggers.parse(body=payload, headers={}, verify_secret=test_secret)
+
+        assert "missing signature header" in str(exc_info.value)
+
+
+class TestTriggerSubscriptionParsing:
+    """Tests for realtime (Pusher) payload parsing in TriggerSubscription."""
+
+    @pytest.fixture
+    def subscription(self):
+        """Create a TriggerSubscription with a mock client."""
+        return TriggerSubscription(client=Mock())
+
+    def test_parse_payload_v3_realtime_envelope(self, subscription):
+        """A V3 realtime envelope is parsed (no KeyError: 'nanoId')."""
+        event = json.dumps(
+            {
+                "id": "evt-1",
+                "type": "composio.trigger.message",
+                "metadata": {
+                    "log_id": "log-1",
+                    "trigger_slug": "GMAIL_NEW_GMAIL_MESSAGE",
+                    "trigger_id": "ti_abc",
+                    "connected_account_id": "ca_abc",
+                    "auth_config_id": "ac_abc",
+                    "user_id": "user-1",
+                },
+                "data": {"subject": "hello"},
+            }
+        )
+
+        result = subscription._parse_payload(event)
+
+        assert result is not None
+        assert result["id"] == "ti_abc"
+        assert result["trigger_slug"] == "GMAIL_NEW_GMAIL_MESSAGE"
+        assert result["toolkit_slug"] == "GMAIL"
+        assert result["user_id"] == "user-1"
+        assert result["payload"] == {"subject": "hello"}
+        assert result["metadata"]["connected_account"]["id"] == "ca_abc"
+        assert result["metadata"]["connected_account"]["auth_config_id"] == "ac_abc"
+
+    def test_parse_payload_legacy_envelope(self, subscription):
+        """A legacy (V1/V2) realtime envelope still parses correctly."""
+        event = json.dumps(
+            {
+                "appName": "gmail",
+                "payload": {"subject": "hello"},
+                "originalPayload": {"raw": 1},
+                "metadata": {
+                    "id": "uuid-1",
+                    "nanoId": "ti_abc",
+                    "triggerName": "GMAIL_NEW_GMAIL_MESSAGE",
+                    "triggerData": "",
+                    "triggerConfig": {},
+                    "connection": {
+                        "id": "conn-uuid",
+                        "connectedAccountNanoId": "ca_abc",
+                        "authConfigNanoId": "ac_abc",
+                        "integrationId": "int-uuid",
+                        "clientUniqueUserId": "user-1",
+                        "status": "ACTIVE",
+                    },
+                },
+            }
+        )
+
+        result = subscription._parse_payload(event)
+
+        assert result is not None
+        assert result["id"] == "ti_abc"
+        assert result["toolkit_slug"] == "gmail"
+        assert result["trigger_slug"] == "GMAIL_NEW_GMAIL_MESSAGE"
+        assert result["metadata"]["connected_account"]["id"] == "ca_abc"
+        assert result["original_payload"] == {"raw": 1}
+
+    def test_parse_payload_malformed_returns_none(self, subscription):
+        """Truly undecodable or unrecognized frames are skipped, not raised."""
+        assert subscription._parse_payload("not-json") is None
+        assert subscription._parse_payload(json.dumps({"unexpected": True})) is None
+
+    def test_parse_payload_legacy_non_dict_metadata_does_not_raise(self, subscription):
+        """A legacy frame with a non-dict metadata is skipped, not raised.
+
+        Guards the broadened `except Exception` in _parse_payload: such a frame
+        must return None rather than propagate into pysher's dispatch loop.
+        """
+        event = json.dumps({"appName": "gmail", "metadata": "not-a-dict"})
+        assert subscription._parse_payload(event) is None
+
+    def test_parse_payload_non_trigger_v3_event(self, subscription):
+        """A non-trigger composio.* event is normalized as a COMPOSIO event."""
+        event = json.dumps(
+            {
+                "id": "evt-1",
+                "type": "composio.connected_account.expired",
+                "metadata": {"project_id": "pr_1"},
+                "data": {"status": "EXPIRED"},
+            }
+        )
+
+        result = subscription._parse_payload(event)
+
+        assert result is not None
+        assert result["toolkit_slug"] == "COMPOSIO"
+        assert result["trigger_slug"] == "composio.connected_account.expired"
+        assert result["original_payload"] == json.loads(event)
+
+    def test_parse_payload_trigger_empty_metadata_does_not_raise(self, subscription):
+        """A trigger frame with empty metadata is delivered with empty identity."""
+        event = json.dumps(
+            {
+                "id": "evt-1",
+                "type": "composio.trigger.message",
+                "metadata": {},
+                "data": {},
+            }
+        )
+
+        result = subscription._parse_payload(event)
+
+        assert result is not None
+        assert result["trigger_slug"] == ""
+        assert result["toolkit_slug"] == "UNKNOWN"
+
+    def test_parse_payload_legacy_missing_optional_fields(self, subscription):
+        """A legacy frame missing optional fields is delivered, not dropped."""
+        event = json.dumps(
+            {
+                "appName": "gmail",
+                "payload": {"subject": "hello"},
+                # originalPayload + triggerData intentionally omitted
+                "metadata": {
+                    "id": "uuid-1",
+                    "nanoId": "ti_abc",
+                    "triggerName": "GMAIL_NEW_GMAIL_MESSAGE",
+                    "triggerConfig": {},
+                    "connection": {
+                        "id": "conn-uuid",
+                        "connectedAccountNanoId": "ca_abc",
+                        "authConfigNanoId": "ac_abc",
+                        "integrationId": "int-uuid",
+                        "clientUniqueUserId": "user-1",
+                        "status": "ACTIVE",
+                    },
+                },
+            }
+        )
+
+        result = subscription._parse_payload(event)
+
+        assert result is not None
+        assert result["original_payload"] is None
+        assert result["metadata"]["trigger_data"] is None
+
+    def test_parse_payload_trigger_keyed_off_type_not_all_metadata(self, subscription):
+        """A trigger frame missing one metadata field is still a trigger event.
+
+        Detection keys off ``type == "composio.trigger.message"`` rather than
+        requiring all six metadata fields, so the event is delivered (not
+        silently demoted to a non-trigger COMPOSIO event).
+        """
+        event = json.dumps(
+            {
+                "id": "evt-1",
+                "type": "composio.trigger.message",
+                "metadata": {
+                    # ``log_id`` intentionally omitted
+                    "trigger_slug": "GMAIL_NEW_GMAIL_MESSAGE",
+                    "trigger_id": "ti_abc",
+                    "connected_account_id": "ca_abc",
+                    "auth_config_id": "ac_abc",
+                    "user_id": "user-1",
+                },
+                "data": {"subject": "hello"},
+            }
+        )
+
+        result = subscription._parse_payload(event)
+
+        assert result is not None
+        assert result["trigger_slug"] == "GMAIL_NEW_GMAIL_MESSAGE"
+        assert result["toolkit_slug"] == "GMAIL"
+        assert result["user_id"] == "user-1"
+
+    def test_parse_payload_non_string_trigger_slug_does_not_raise(self, subscription):
+        """A null/non-string trigger_slug must not raise AttributeError (Vector A)."""
+        event = json.dumps(
+            {
+                "id": "evt-1",
+                "type": "composio.trigger.message",
+                "metadata": {
+                    "trigger_slug": None,
+                    "trigger_id": "ti_abc",
+                    "connected_account_id": "ca_abc",
+                    "auth_config_id": "ac_abc",
+                    "user_id": 123,
+                    "log_id": "log-1",
+                },
+                "data": {"subject": "hello"},
+            }
+        )
+
+        result = subscription._parse_payload(event)
+
+        assert result is not None
+        assert result["trigger_slug"] == ""
+        assert result["toolkit_slug"] == "UNKNOWN"
+        assert result["user_id"] == "123"
+
+    @staticmethod
+    def _make_event(**overrides):
+        """Build a minimal TriggerEvent dict for filter-matching tests."""
+        event = {
+            "id": "ti_1",
+            "uuid": "ti_1",
+            "user_id": "user-1",
+            "toolkit_slug": "GMAIL",
+            "trigger_slug": "GMAIL_NEW_GMAIL_MESSAGE",
+            "metadata": {
+                "id": "ti_1",
+                "connected_account": {
+                    "id": "ca_1",
+                    "auth_config_id": "ac_1",
+                },
+            },
+        }
+        event.update(overrides)
+        return event
+
+    def test_filters_match_no_filters_matches(self, subscription):
+        """An empty filterset matches any event."""
+        assert subscription._filters_match(self._make_event(), {}, "cb") is True
+
+    def test_filters_match_does_not_crash_on_non_string_event_value(self, subscription):
+        """A non-string identity field must not raise AttributeError (Vector B)."""
+        event = self._make_event(user_id=123)
+        assert subscription._filters_match(event, {"user_id": "123"}, "cb") is True
+        assert subscription._filters_match(event, {"user_id": "999"}, "cb") is False
+
+    def test_filters_match_empty_event_value_does_not_fail_open(self, subscription):
+        """A synthesized empty identity field must not match a "" filter."""
+        event = self._make_event(user_id="")
+        assert subscription._filters_match(event, {"user_id": ""}, "cb") is False
+
+    def test_truncate_frame_bounds_long_frames(self):
+        """A long raw frame is truncated so PII-bearing frames aren't dumped."""
+        short = "x" * 10
+        assert _truncate_frame(short) == short
+
+        long = "y" * (_MAX_LOGGED_FRAME_CHARS + 100)
+        truncated = _truncate_frame(long)
+        assert len(truncated) < len(long)
+        assert truncated.startswith("y" * _MAX_LOGGED_FRAME_CHARS)
+        assert str(len(long)) in truncated
+
+
+class TestChunkedEventResilience:
+    """A malformed chunked frame must never tear down the subscription.
+
+    ``_handle_chunked_events`` is bound directly as a pysher channel callback,
+    and pysher invokes bound callbacks without a try/except. Before the fix,
+    any malformed frame (bad JSON, missing key, wrong type) propagated up and
+    killed the subscription — the same failure mode already guarded against in
+    ``_parse_payload``.
+    """
+
+    @pytest.fixture
+    def subscription(self):
+        """Create a TriggerSubscription with a mock client."""
+        return TriggerSubscription(client=Mock())
+
+    def test_malformed_json_does_not_raise(self, subscription):
+        """A non-JSON frame is logged and skipped, not raised."""
+        # Must not raise — pysher's dispatch loop has no try/except.
+        subscription._handle_chunked_events("not valid json {")
+        # No chunks were buffered for the bad frame.
+        assert subscription._chunks == {}
+
+    @pytest.mark.parametrize(
+        "event",
+        [
+            [],
+            {"id": "evt-1", "index": 0},
+            {"id": [], "index": 0, "chunk": "x", "final": True},
+            {"id": "evt-1", "index": "zero", "chunk": "x", "final": True},
+            {"id": "evt-1", "index": True, "chunk": "x", "final": True},
+            {"id": "evt-1", "index": 0, "chunk": 1, "final": True},
+            {"id": "evt-1", "index": 0, "chunk": "x", "final": "true"},
+        ],
+    )
+    def test_invalid_frame_is_skipped(self, subscription, event):
+        """Missing or wrongly typed fields are skipped without dispatching."""
+        with patch.object(subscription, "_handle_event") as mock_handle:
+            subscription._handle_chunked_events(json.dumps(event))
+
+        mock_handle.assert_not_called()
+        assert subscription._chunks == {}
+
+    def test_decoder_failure_does_not_raise(self, subscription):
+        """Unexpected decoder failures are contained at the callback boundary."""
+        with patch(
+            "composio.core.models.triggers.json.loads", side_effect=RecursionError
+        ):
+            subscription._handle_chunked_events("[]")
+
+        assert subscription._chunks == {}
+
+    def test_valid_chunks_reassemble_after_bad_frame_for_same_id(self, subscription):
+        """A bad frame clears partial state so the same id can be reused."""
+        with patch.object(subscription, "_handle_event") as mock_handle:
+            subscription._handle_chunked_events(
+                json.dumps(
+                    {"id": "evt-1", "index": 0, "chunk": "stale", "final": False}
+                )
+            )
+            subscription._handle_chunked_events(
+                json.dumps(
+                    {"id": "evt-1", "index": "bad", "chunk": "x", "final": False}
+                )
+            )
+            subscription._handle_chunked_events(
+                json.dumps({"id": "evt-1", "index": 0, "chunk": "hel", "final": False})
+            )
+            subscription._handle_chunked_events(
+                json.dumps({"id": "evt-1", "index": 1, "chunk": "lo", "final": True})
+            )
+
+        mock_handle.assert_called_once_with(event="hello")
+        assert subscription._chunks == {}
+
+
+class TestTriggerSubscriptionStop:
+    """Tests for TriggerSubscription.stop lifecycle handling."""
+
+    @pytest.fixture
+    def subscription(self):
+        """Create a TriggerSubscription with a mock client."""
+        sub = TriggerSubscription(client=Mock())
+        sub._alive = True
+        return sub
+
+    def test_stop_clears_alive_synchronously(self, subscription):
+        """``_alive`` is cleared before ``stop`` returns, not after disconnect.
+
+        A main thread parked in ``wait_forever`` checks ``_alive`` every
+        second; clearing it synchronously (rather than after a potentially
+        blocking ``disconnect``) lets that loop exit promptly.
+        """
+        disconnect_started = threading.Event()
+
+        def blocking_disconnect():
+            disconnect_started.set()
+            # Block so we can prove _alive was cleared without waiting on
+            # the disconnect.
+            threading.Event().wait(timeout=5)
+
+        subscription._connection = Mock()
+        subscription._connection.disconnect = blocking_disconnect
+
+        subscription.stop()
+
+        # _alive is False the moment stop() returns, even though disconnect
+        # is still running in the background.
+        assert subscription.is_alive() is False
+        assert disconnect_started.wait(timeout=2)
+
+    def test_stop_does_not_block_on_slow_disconnect(self, subscription):
+        """``stop()`` returns even if ``disconnect`` would block forever.
+
+        pysher's ``Connection.disconnect`` joins the websocket thread. When
+        ``stop()`` is called from a callback that pysher dispatches on that
+        same thread, the join deadlocks. Running the disconnect on a daemon
+        thread breaks the reentrancy: ``stop`` returns immediately even when
+        ``disconnect`` never completes.
+        """
+        started = threading.Event()
+        never_set = threading.Event()
+
+        def blocking_disconnect():
+            started.set()
+            # Simulate pysher joining a thread that never finishes (the
+            # deadlock state from the bug report).
+            never_set.wait(timeout=5)
+
+        subscription._connection = Mock()
+        subscription._connection.disconnect = blocking_disconnect
+
+        # If stop() were to call disconnect() inline it would block here.
+        subscription.stop()
+
+        # stop() returned control and the disconnect is running in the
+        # background.
+        assert subscription.is_alive() is False
+        assert started.wait(timeout=2)
+
+
+class TestSubscriptionBuilderConnectTimeout:
+    """Tests for _SubcriptionBuilder.connect timeout teardown."""
+
+    def _make_builder(self, pusher: Mock) -> _SubcriptionBuilder:
+        """Build a _SubcriptionBuilder with a patched pusher factory."""
+        client = Mock()
+        client.base_url = "https://api.example.com"
+        with patch.object(
+            _SubcriptionBuilder, "_get_pusher_instance", return_value=pusher
+        ):
+            b = _SubcriptionBuilder(client=client)
+        b.subscription = Mock()
+        b.subscription.is_alive.return_value = False
+        b.internal = Mock()
+        b.internal.get_sdk_realtime_credentials.return_value = Mock(
+            project_id="p", pusher_key="k", pusher_cluster="c"
+        )
+        b._get_connection_handler = Mock(  # type: ignore[method-assign]
+            return_value=lambda *a, **k: None
+        )
+        return b
+
+    def test_connect_disconnects_pusher_on_timeout(self):
+        """On timeout, the partially-connected pusher is torn down.
+
+        pysher's connection loop redials every ``reconnect_interval`` until
+        ``disconnect`` is called. If ``connect`` raises without disconnecting,
+        each timed-out attempt leaks a websocket thread for the life of the
+        process. The fix wraps the wait loop in try/except so the timeout
+        path disconnects before re-raising.
+        """
+        pusher = Mock()
+        builder = self._make_builder(pusher)
+        # subscription.is_alive() returns False, so the wait loop never
+        # returns early -> the deadline elapses -> timeout path runs.
+        builder.subscription.is_alive.return_value = False
+
+        with (
+            patch.object(
+                _SubcriptionBuilder, "_get_pusher_instance", return_value=pusher
+            ),
+            pytest.raises(ComposioSDKTimeoutError),
+        ):
+            builder.connect(timeout=0.1)
+
+        pusher.disconnect.assert_called_once()
+
+    def test_connect_returns_subscription_without_disconnecting(self):
+        """On success, the pusher stays connected and is attached to the sub."""
+        pusher = Mock()
+        builder = self._make_builder(pusher)
+        builder.subscription.is_alive.return_value = True
+
+        with patch.object(
+            _SubcriptionBuilder, "_get_pusher_instance", return_value=pusher
+        ):
+            result = builder.connect(timeout=2.0)
+
+        assert result is builder.subscription
+        pusher.disconnect.assert_not_called()

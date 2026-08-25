@@ -1,0 +1,11 @@
+{
+  "title": "Direct auth",
+  "defaultOpen": false,
+  "pages": [
+    "custom-auth-configs",
+    "white-labeling",
+    "custom-auth-params",
+    "connected-accounts",
+    "migrating-initiate-to-link"
+  ]
+}

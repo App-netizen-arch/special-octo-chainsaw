@@ -1,0 +1,29 @@
+{
+  "pages": [
+    "---Get Started---",
+    "index",
+    "quickstart",
+    "providers",
+    "agent-plugins",
+    "cli",
+    "composio-connect",
+    "---Core concepts---",
+    "how-composio-works",
+    "configuring-sessions",
+    "authentication",
+    "triggers",
+    "skills",
+    "---Guides---",
+    "sessions-via-mcp",
+    "sandbox",
+    "extending-sessions",
+    "setting-up-triggers",
+    "---Direct execution (legacy)---",
+    "sessions-vs-direct-execution",
+    "tools-direct",
+    "auth-configuration",
+    "---Migration and security---",
+    "migration-guide",
+    "security"
+  ]
+}

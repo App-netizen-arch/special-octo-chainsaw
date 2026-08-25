@@ -1,0 +1,88 @@
+# Reusable Dockerfile for Node.js e2e tests
+# Usage: docker build -f Dockerfile.node --build-arg NODE_VERSION=22.22.3 -t test-name .
+#
+# Uses official node:slim images. For multi-version testing, run the build/run
+# multiple times with different NODE_VERSION values from the shell script.
+#
+# bun and pnpm are installed from mise.toml/mise.lock (the single source of truth).
+# Node is the test matrix axis and stays on the base image, so it is disabled in
+# mise (MISE_DISABLE_TOOLS) to avoid shadowing the base image's Node.
+
+ARG NODE_VERSION
+
+FROM node:${NODE_VERSION}-slim
+
+ENV MISE_DATA_DIR="/mise"
+ENV MISE_CACHE_DIR="/mise/cache"
+ENV MISE_DISABLE_TOOLS="node,deno,python,uv"
+ENV MISE_TRUSTED_CONFIG_PATHS="/app"
+ENV PATH="/mise/shims:$PATH"
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl unzip && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install bun + pnpm via mise (versions pinned in mise.toml/mise.lock).
+# mise is installed to /usr/local/bin; its shared cache and shims keep the tools
+# available to the non-root runtime user.
+ENV XDG_CACHE_HOME="/mise/cache"
+RUN curl -fsSL https://mise.run | MISE_INSTALL_PATH=/usr/local/bin/mise sh
+COPY mise.toml mise.lock ./
+RUN mise install && \
+    pnpm --version && \
+    bun --version
+
+# Copy lockfile first for optimal layer caching
+COPY pnpm-lock.yaml ./
+
+# Copy workspace configuration files
+COPY package.json \
+     pnpm-workspace.yaml \
+     .pnpmfile.cjs \
+     tsconfig.base.json \
+     tsdown.config.base.ts \
+     toolchain-versions.json \
+     ./
+
+# Copy pre-install scripts (rarely change)
+COPY ts/scripts/pre-install.sh ./ts/scripts/pre-install.sh
+COPY ts/scripts/pre-install/ ./ts/scripts/pre-install/
+
+# Copy all ts/packages (pre-built)
+COPY ts/packages/ ./ts/packages/
+
+# Install dependencies using pnpm
+# Note: We intentionally don't use --mount=type=cache for the pnpm store here
+# because it causes native binding issues (e.g., rolldown-binding) across builds
+RUN BYPASS_TOOLCHAIN_CHECK=1 pnpm install --frozen-lockfile
+
+# Build and install composio CLI binary
+# This is a simplified version of ts/packages/cli/scripts/build-binary.ts + install-binary.ts
+WORKDIR /app/ts/packages/cli
+RUN bun build ./src/bin.ts \
+    --env DEBUG_OVERRIDE_* \
+    --compile \
+    --production \
+    --outfile /usr/local/bin/composio
+
+WORKDIR /app
+
+# Copy e2e tests last (changes frequently)
+COPY ts/e2e-tests/ ./ts/e2e-tests/
+
+RUN chown -R node:node /app
+
+# Pre-create Composio CLI cache directory to work around Bun issue #7967
+# (Bun-compiled binaries may silently fail to create directories in Docker)
+# See: https://github.com/oven-sh/bun/issues/7967
+RUN mkdir -p /home/node/.composio && chown node:node /home/node/.composio
+
+USER node
+
+RUN pnpm --version && \
+    bun --version
+
+CMD ["sh"]

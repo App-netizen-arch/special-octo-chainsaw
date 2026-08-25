@@ -1,0 +1,29 @@
+import { defineConfig } from 'tsdown';
+import { baseConfig } from '../../../tsdown.config.base.ts';
+
+export default defineConfig({
+  ...baseConfig,
+  entry: [
+    'src/bin.ts',
+    'src/services/run-subagent-shared.ts',
+    'src/services/run-subagent-acp.ts',
+    'src/services/run-subagent-legacy.ts',
+    'src/services/run-subagent-output-mcp.ts',
+  ],
+  format: ['esm'],
+  shims: true,
+  tsconfig: './tsconfig.src.json',
+  deps: {
+    ...baseConfig.deps,
+    neverBundle: [/^bun:/, /^node:/],
+    alwaysBundle: [
+      '@composio/core',
+      '@composio/cli-local-tools',
+      /^zod(?:\/.*)?$/,
+      /^@agentclientprotocol\/sdk(?:\/.*)?$/,
+      /^@modelcontextprotocol\/sdk(?:\/.*)?$/,
+    ],
+  },
+  publint: undefined,
+  attw: undefined,
+});

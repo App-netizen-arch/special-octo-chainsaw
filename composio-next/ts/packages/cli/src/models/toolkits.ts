@@ -1,0 +1,122 @@
+import { Brand, Schema } from 'effect';
+import { JSONTransformSchema } from './utils/json-transform-schema';
+
+/**
+ * The shape of a toolkit slug: a single, safe path segment (no `/`, `\`, or
+ * `..`), which prevents path traversal / arbitrary file write when a slug is
+ * interpolated into a filename and joined to the generator's output directory.
+ * See CWE-22.
+ *
+ * Shared so that every place that has to vouch for a slug — the schema below,
+ * the baked-catalog generator, and the test guarding its output — tightens
+ * together rather than drifting apart.
+ */
+export const TOOLKIT_SLUG_PATTERN = /^[a-z0-9_][a-z0-9_-]*$/;
+
+/**
+ * A toolkit slug used to derive generated source filenames.
+ */
+export const ToolkitSlug = Schema.Trim.pipe(
+  Schema.nonEmptyString(),
+  Schema.pattern(TOOLKIT_SLUG_PATTERN, {
+    identifier: 'ToolkitSlug',
+    message: () =>
+      'Toolkit slug must contain only lowercase letters, digits, underscores, and hyphens (no path separators)',
+  })
+);
+
+export const Toolkit = Schema.Struct({
+  name: Schema.String, // "Gmail"
+  slug: ToolkitSlug, // "gmail"
+  auth_schemes: Schema.Array(Schema.String), // [ "OAUTH2", "BEARER_TOKEN" ]
+  composio_managed_auth_schemes: Schema.Array(Schema.String), // [ "OAUTH2" ]
+  is_local_toolkit: Schema.Boolean,
+  meta: Schema.Struct({
+    description: Schema.String,
+    categories: Schema.Array(Schema.Unknown),
+    created_at: Schema.DateTimeUtc, // "2024-05-03T11:44:32.061Z"
+    updated_at: Schema.DateTimeUtc, // "2024-05-03T11:44:32.061Z"
+    available_versions: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
+    tools_count: Schema.optionalWith(Schema.Int, { default: () => 0 }),
+    triggers_count: Schema.optionalWith(Schema.Int, { default: () => 0 }),
+  }),
+  no_auth: Schema.Boolean,
+}).annotations({ identifier: 'Toolkit' });
+export type Toolkit = Schema.Schema.Type<typeof Toolkit>;
+
+export const Toolkits = Schema.Array(Toolkit);
+export type Toolkits = Schema.Schema.Type<typeof Toolkits>;
+
+export const ToolkitsJSON = JSONTransformSchema(Toolkits);
+export const toolkitsFromJSON = Schema.decode(ToolkitsJSON);
+export const toolkitsToJSON = Schema.encode(ToolkitsJSON);
+
+export type ToolkitName = string & Brand.Brand<'ToolkitName'>;
+export const ToolkitName = Brand.nominal<ToolkitName>();
+
+/**
+ * Field definition for auth config creation / connected account initiation.
+ */
+export const AuthConfigField = Schema.Struct({
+  name: Schema.String,
+  displayName: Schema.String,
+  description: Schema.String,
+  type: Schema.String,
+  required: Schema.Boolean,
+  default: Schema.optionalWith(Schema.NullOr(Schema.String), { default: () => null }),
+}).annotations({ identifier: 'AuthConfigField' });
+export type AuthConfigField = Schema.Schema.Type<typeof AuthConfigField>;
+
+/**
+ * Auth config detail for a specific auth scheme (e.g. OAUTH2, API_KEY).
+ */
+export const AuthConfigDetail = Schema.Struct({
+  mode: Schema.String,
+  name: Schema.String,
+  fields: Schema.Struct({
+    auth_config_creation: Schema.Struct({
+      required: Schema.Array(AuthConfigField),
+      optional: Schema.Array(AuthConfigField),
+    }),
+    connected_account_initiation: Schema.Struct({
+      required: Schema.Array(AuthConfigField),
+      optional: Schema.Array(AuthConfigField),
+    }),
+  }),
+}).annotations({ identifier: 'AuthConfigDetail' });
+export type AuthConfigDetail = Schema.Schema.Type<typeof AuthConfigDetail>;
+
+/**
+ * Detailed toolkit info from the retrieve endpoint, includes auth_config_details.
+ */
+export const ToolkitDetailed = Schema.Struct({
+  name: Schema.String,
+  slug: ToolkitSlug,
+  is_local_toolkit: Schema.Boolean,
+  composio_managed_auth_schemes: Schema.optionalWith(Schema.Array(Schema.String), {
+    default: () => [],
+  }),
+  no_auth: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  meta: Schema.Struct({
+    description: Schema.optionalWith(Schema.String, { default: () => '' }),
+    categories: Schema.optionalWith(Schema.Array(Schema.Unknown), { default: () => [] }),
+    created_at: Schema.DateTimeUtc,
+    updated_at: Schema.DateTimeUtc,
+    available_versions: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
+    tools_count: Schema.optionalWith(Schema.Int, { default: () => 0 }),
+    triggers_count: Schema.optionalWith(Schema.Int, { default: () => 0 }),
+  }),
+  auth_config_details: Schema.optionalWith(Schema.Array(AuthConfigDetail), { default: () => [] }),
+}).annotations({ identifier: 'ToolkitDetailed' });
+export type ToolkitDetailed = Schema.Schema.Type<typeof ToolkitDetailed>;
+
+/**
+ * Search result for a single page of toolkits.
+ */
+export const ToolkitSearchResult = Schema.Struct({
+  items: Toolkits,
+  total_items: Schema.Int,
+  total_pages: Schema.Int,
+  next_cursor: Schema.NullOr(Schema.String),
+}).annotations({ identifier: 'ToolkitSearchResult' });
+export type ToolkitSearchResult = Schema.Schema.Type<typeof ToolkitSearchResult>;

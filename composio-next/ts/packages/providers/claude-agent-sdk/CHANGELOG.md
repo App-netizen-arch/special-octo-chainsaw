@@ -1,0 +1,306 @@
+# @composio/claude-code-agents
+
+## 0.11.0
+
+### Minor Changes
+
+- ac6bbab: Register each tool with its complete schema, so root rules reach the Claude Agent SDK.
+
+  The provider used to register a raw property shape. A raw shape is only the map of named properties, so it cannot carry any root rule. `additionalProperties` and `patternProperties` were dropped before the SDK saw them.
+
+  Two things went wrong because of that. Free-form object arguments lost their content. An argument the tool never declared was quietly removed, and the tool ran anyway.
+
+  Both are fixed. The provider now registers the whole object schema.
+
+  **What no longer works**
+
+  An undeclared argument no longer passes silently.
+
+  ```ts
+  // The tool declares `to` and nothing else. The model also sends `hallucinated`.
+  { to: 'someone@example.com', hallucinated: 'value' }
+
+  // before: `hallucinated` was stripped, and the tool ran with { to: '...' }
+  // now:    the caller receives an error result, and the tool does not run
+  ```
+
+  Tools with no input parameters behave the same way. They stay closed and reject every argument.
+
+  **What to do instead**
+
+  If the model should be allowed to send extra keys, say so in the tool schema:
+
+  ```json
+  {
+    "type": "object",
+    "properties": { "to": { "type": "string" } },
+    "additionalProperties": true
+  }
+  ```
+
+  If an argument is one the tool really accepts, declare it in `properties`. Rejection is usually the better outcome, because the agent sees the error and can correct itself instead of running with a silently dropped argument.
+
+  This brings the provider in line with `@composio/vercel`, `@composio/langchain`, and `@composio/llamaindex`, which already registered complete schemas.
+
+## 0.10.1
+
+### Patch Changes
+
+- 58bc93b: Refresh dependency ranges and lockfiles across the workspace.
+- fa933a6: Fix the `homepage` links in these packages' `package.json`. They pointed at `github.com/ComposioHQ/composio/tree/main/...`, but the default branch is `next` and no `main` branch exists, so every link 404'd on npm and in editor tooltips. They now point at `tree/next/...`.
+
+## 0.10.0
+
+### Minor Changes
+
+- 025a657: Drop CommonJS entrypoints and publish the TypeScript SDK packages as ESM-only packages. This is a breaking change within the existing 0.x release line: consumers must use Node.js 22.22.3 or newer. CommonJS callers can only rely on Node's native `require(esm)` interop, and the SDK no longer ships custom CommonJS compatibility machinery or `.cjs` artifacts.
+
+### Patch Changes
+
+- cbbad15: Improve Zod compatibility at the SDK schema boundary. Custom tools now convert both `zod/v3` and Zod v4 schemas to JSON Schema correctly instead of degrading Zod v4 object schemas to empty schemas. `@composio/core` now exposes `jsonSchemaToZodShape` via `@composio/core/utils/json-schema`, and the Claude Agent SDK provider uses that core subpath instead of converting to a full Zod object and casting `.shape` out of it.
+
+## 0.9.3
+
+### Patch Changes
+
+- ce4b213: fix(providers): normalize string tool-call arguments across all providers
+
+  Models occasionally emit tool-call arguments as a JSON string instead of an
+  object (most visibly with `COMPOSIO_MULTI_EXECUTE_TOOL` on the Vercel AI SDK),
+  which broke downstream validation with errors like
+  `tool_use.input: Input should be a valid dictionary`.
+
+  `@composio/core` now exposes a single `normalizeToolArguments` helper, and every
+  provider routes model-supplied arguments through it. Object payloads pass
+  through unchanged, JSON strings are parsed, empty/`null` payloads become `{}`,
+  and anything that cannot resolve to an object throws a typed
+  `ComposioInvalidToolArgumentsError` instead of a raw `SyntaxError` or a silently
+  forwarded malformed string. This replaces the inconsistent per-provider guards
+  that previously existed only in vercel, cloudflare and openai-agents.
+
+## 0.9.2
+
+### Patch Changes
+
+- Updated dependencies [42ebff3]
+  - @composio/core@0.10.0
+
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [84a3a07]
+- Updated dependencies [c358ffa]
+  - @composio/core@0.9.1
+
+## 0.9.0
+
+### Minor Changes
+
+- Bumped to align with `@composio/core@0.9.0` for the Tool Router release train. No public-API change in this provider package.
+
+### Patch Changes
+
+- Updated dependencies [c9b6525]
+- Updated dependencies [cc673b6]
+- Updated dependencies [9f14971]
+- Updated dependencies [81f8027]
+- Updated dependencies [711a703]
+- Updated dependencies [bccd32b]
+- Updated dependencies [bccd32b]
+- Updated dependencies [07c9bab]
+- Updated dependencies [3ece424]
+  - @composio/core@0.9.0
+
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [6b986cd]
+- Updated dependencies [1c3276b]
+  - @composio/core@0.8.1
+
+## 0.8.0
+
+### Minor Changes
+
+- Bumped to align with `@composio/core@0.8.0` for the file-upload allowlist release train. No public-API change in this package.
+
+### Patch Changes
+
+- Updated dependencies [ebc9778]
+  - @composio/core@0.8.0
+
+## 0.6.11
+
+### Patch Changes
+
+- Updated dependencies [27ed0c9]
+  - @composio/core@0.6.11
+
+## 0.6.10
+
+### Patch Changes
+
+- Updated dependencies [670ecc9]
+  - @composio/core@0.6.10
+
+## 0.6.9
+
+### Patch Changes
+
+- Updated dependencies [5b5723a]
+  - @composio/core@0.6.9
+
+## 0.6.8
+
+### Patch Changes
+
+- Updated dependencies [2b19ae9]
+  - @composio/core@0.6.8
+
+## 0.6.7
+
+### Patch Changes
+
+- Updated dependencies [8dc5568]
+  - @composio/core@0.6.7
+
+## 0.6.6
+
+### Patch Changes
+
+- Updated dependencies [e1f6516]
+  - @composio/core@0.6.6
+
+## 0.6.5
+
+### Patch Changes
+
+- Updated dependencies [476d451]
+- Updated dependencies
+  - @composio/core@0.6.5
+
+## 0.6.5-alpha.0
+
+### Patch Changes
+
+- Updated dependencies
+  - @composio/core@0.6.5-alpha.0
+
+## 0.6.4
+
+### Patch Changes
+
+- Updated dependencies [e3f1f6c]
+  - @composio/core@0.6.4
+
+## 0.6.3
+
+### Patch Changes
+
+- Updated dependencies [087385d]
+  - @composio/core@0.6.3
+
+## 0.6.2
+
+### Patch Changes
+
+- @composio/core@0.6.2
+
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [e746383]
+  - @composio/core@0.6.1
+
+## 0.6.0
+
+### Minor Changes
+
+- Breaking: Fixes for cloudflare support, webhook verification and other fixes
+
+### Patch Changes
+
+- Updated dependencies
+  - @composio/core@0.6.0
+
+## 0.5.5
+
+### Patch Changes
+
+- Updated dependencies [b132aad]
+  - @composio/core@0.5.5
+
+## 0.5.4
+
+### Patch Changes
+
+- Updated dependencies [b3f5875]
+  - @composio/core@0.5.4
+
+## 0.5.3
+
+### Patch Changes
+
+- Updated dependencies [498505d]
+  - @composio/core@0.5.3
+
+## 0.5.2
+
+### Patch Changes
+
+- Updated dependencies [277f02b]
+  - @composio/core@0.5.2
+
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [3055048]
+  - @composio/core@0.5.1
+
+## 0.5.0
+
+### Minor Changes
+
+- d80f3e2: Bump core dependency to 0.5.0
+
+## 0.4.0
+
+### Minor Changes
+
+- c7e1217: Add support for dedicated tools for tool router
+
+### Patch Changes
+
+- Updated dependencies [c7e1217]
+  - @composio/core@0.4.0
+
+## 0.3.4
+
+### Patch Changes
+
+- Updated dependencies [019f54f]
+  - @composio/core@0.3.4
+
+## 0.3.3
+
+### Patch Changes
+
+- eeb296b: Fix claude agent sdk type conversions
+
+## 0.3.3
+
+### Patch Changes
+
+- Updated dependencies [a76b002]
+  - @composio/core@0.3.3
+
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [69cfede]
+  - @composio/core@0.3.2

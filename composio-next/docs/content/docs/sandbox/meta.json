@@ -1,0 +1,8 @@
+{
+  "title": "Sandboxes",
+  "defaultOpen": false,
+  "pages": [
+    "remote",
+    "local"
+  ]
+}

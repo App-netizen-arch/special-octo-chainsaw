@@ -1,0 +1,31 @@
+---
+title: Triggers
+description: "Trigger management and execution"
+---
+
+{/* Auto-generated from OpenAPI spec. Edit the overview at api-overviews/triggers.mdx, not this file. */}
+
+Triggers let you subscribe to events from a user's connected app, such as a new Gmail message, a GitHub commit, or a Slack message, and receive the event data as a structured payload at your webhook endpoint.
+
+There are two layers to understand:
+
+- A **trigger type** is a template that defines what event to listen for and what configuration it needs. For example, `GITHUB_COMMIT_EVENT` requires an `owner` and a `repo`. Each toolkit exposes its own trigger types.
+- A **trigger instance** is a trigger type scoped to a specific user and connected account. Creating one produces an instance with its own `ti_*` ID that you can enable, disable, or delete independently.
+
+Reach for these endpoints when you want to:
+
+- Discover the trigger types a toolkit offers, or fetch one type by `slug` to inspect its config and payload schema.
+- Create or update a trigger instance for a connected account with the upsert endpoint.
+- List active trigger instances, or enable, disable, and delete an instance by `triggerId`.
+
+These endpoints authenticate with your project API key in the `x-api-key` header.
+
+<Callout type="info">
+Creating a trigger instance only registers it. To actually receive events, set a webhook URL for your project once, then route incoming events on `metadata.trigger_slug`. See [Subscribing to events](/docs/setting-up-triggers/subscribing-to-events).
+</Callout>
+
+For the full concept overview, see [Triggers](/docs/triggers).
+
+## Endpoints
+
+<ApiEndpointsTable endpoints={[{"method":"POST","pathV31":"/api/v3.1/trigger_instances/{slug}/upsert","pathV3":"/api/v3/trigger_instances/{slug}/upsert","summary":"Create or update a trigger","href":"/reference/v3/api-reference/triggers/postTriggerInstancesBySlugUpsert"},{"method":"GET","pathV31":"/api/v3.1/trigger_instances/active","pathV3":"/api/v3/trigger_instances/active","summary":"List active triggers","href":"/reference/v3/api-reference/triggers/getTriggerInstancesActive"},{"method":"DELETE","pathV31":"/api/v3.1/trigger_instances/manage/{triggerId}","pathV3":"/api/v3/trigger_instances/manage/{triggerId}","summary":"Delete a trigger","href":"/reference/v3/api-reference/triggers/deleteTriggerInstancesManageByTriggerId"},{"method":"PATCH","pathV31":"/api/v3.1/trigger_instances/manage/{triggerId}","pathV3":"/api/v3/trigger_instances/manage/{triggerId}","summary":"Enable or disable a trigger","href":"/reference/v3/api-reference/triggers/patchTriggerInstancesManageByTriggerId"},{"method":"GET","pathV31":"/api/v3.1/triggers_types/list/enum","pathV3":"/api/v3/triggers_types/list/enum","summary":"List trigger type enums","href":"/reference/v3/api-reference/triggers/getTriggersTypesListEnum"},{"method":"GET","pathV31":"/api/v3.1/triggers_types/{slug}","pathV3":"/api/v3/triggers_types/{slug}","summary":"Get trigger type by slug","href":"/reference/v3/api-reference/triggers/getTriggersTypesBySlug"},{"method":"GET","pathV31":"/api/v3.1/triggers_types","pathV3":"/api/v3/triggers_types","summary":"List trigger types","href":"/reference/v3/api-reference/triggers/getTriggersTypes"}]} />

@@ -1,0 +1,18 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "esnext",
+    "strict": true,
+    "esModuleInterop": true,
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+    // No `paths` into sibling packages' src: workspace deps resolve to their
+    // built dist types (turbo builds dependencies first). Mapping them to src
+    // pulled core's sources into this program — which both required mirroring
+    // core's internal `#...` import conditions here and made TS7's tsgo dts
+    // step emit stray .d.ts files next to the mapped sources.
+  },
+  "include": ["src", "test"]
+}

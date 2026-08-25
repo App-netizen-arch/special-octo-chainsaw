@@ -1,0 +1,113 @@
+"""ComposioLangChain class definition"""
+
+import types
+import typing as t
+from inspect import Signature
+
+import pydantic
+from langchain_core.tools import StructuredTool as BaseStructuredTool
+
+from composio.core.provider import AgenticProvider, AgenticProviderExecuteFn
+from composio.types import Tool
+from composio.utils.pydantic import parse_pydantic_error
+from composio.utils.shared import (
+    get_signature_format_from_schema_params,
+    json_schema_to_model,
+    normalize_tool_arguments,
+    reinstate_reserved_python_keywords,
+    substitute_reserved_python_keywords,
+    validate_and_serialize_tool_arguments,
+)
+
+
+class StructuredTool(BaseStructuredTool):  # type: ignore[misc]
+    def _to_args_and_kwargs(
+        self,
+        tool_input: t.Union[str, t.Dict[str, t.Any]],
+        tool_call_id: t.Optional[str],
+    ) -> t.Tuple[t.Tuple[str, ...], t.Dict[str, t.Any]]:
+        """Validate dynamic-only schemas before LangChain's no-field shortcut."""
+        args_schema = self.args_schema
+        if (
+            isinstance(tool_input, dict)
+            and isinstance(args_schema, type)
+            and issubclass(args_schema, pydantic.BaseModel)
+        ):
+            arguments = validate_and_serialize_tool_arguments(args_schema, tool_input)
+            return (), arguments
+        return super()._to_args_and_kwargs(tool_input, tool_call_id)
+
+    def run(self, *args, **kwargs):
+        try:
+            return super().run(*args, **kwargs)
+        except pydantic.ValidationError as e:
+            return {"successful": False, "error": parse_pydantic_error(e), "data": None}
+
+
+class LangchainProvider(
+    AgenticProvider[StructuredTool, t.List[StructuredTool]],
+    name="langchain",
+):
+    """
+    Composio toolset for Langchain framework.
+    """
+
+    runtime = "langchain"
+
+    def wrap_tool(
+        self, tool: Tool, execute_tool: AgenticProviderExecuteFn
+    ) -> StructuredTool:
+        """Wraps composio tool as Langchain StructuredTool object."""
+        # Replace reserved python keywords
+        schema_params, keywords = substitute_reserved_python_keywords(
+            schema=tool.input_parameters
+        )
+
+        def function(**kwargs: t.Any) -> t.Dict:
+            """Wrapper function for composio action."""
+            kwargs = reinstate_reserved_python_keywords(
+                request=kwargs,
+                keywords=keywords,
+            )
+            # Normalize defensively so a stringified payload is coerced to a dict (issue #2406).
+            return execute_tool(tool.slug, normalize_tool_arguments(kwargs))
+
+        action_func = types.FunctionType(
+            function.__code__,
+            globals=globals(),
+            name=tool.slug,
+            closure=function.__closure__,
+        )
+        action_func.__signature__ = Signature(  # type: ignore
+            parameters=get_signature_format_from_schema_params(
+                schema_params=schema_params,
+                skip_default=self.skip_default,
+            )
+        )
+        action_func.__doc__ = tool.description
+
+        return t.cast(
+            StructuredTool,
+            StructuredTool.from_function(
+                name=tool.slug,
+                description=tool.description,
+                args_schema=json_schema_to_model(
+                    json_schema=schema_params,
+                    skip_default=self.skip_default,
+                ),
+                return_schema=True,
+                func=action_func,
+                handle_tool_error=True,
+                handle_validation_error=True,
+            ),
+        )
+
+    def wrap_tools(
+        self,
+        tools: t.Sequence[Tool],
+        execute_tool: AgenticProviderExecuteFn,
+    ) -> t.List[StructuredTool]:
+        """
+        Get composio tools wrapped as Langchain StructuredTool objects.
+        """
+        return [self.wrap_tool(tool=tool, execute_tool=execute_tool) for tool in tools]

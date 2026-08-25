@@ -1,0 +1,28 @@
+{
+  "name": "@e2e-tests/cf-workers-tool-router-ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "vitest run",
+    "test:e2e:cloudflare": "vitest run",
+    "dev": "wrangler dev",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "catalog:",
+    "@cloudflare/workers-types": "catalog:",
+    "dotenv": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "wrangler": "catalog:"
+  },
+  "dependencies": {
+    "@ai-sdk/mcp": "catalog:",
+    "@ai-sdk/openai": "catalog:",
+    "@composio/core": "workspace:*",
+    "@composio/vercel": "workspace:*",
+    "ai": "catalog:",
+    "hono": "catalog:"
+  }
+}

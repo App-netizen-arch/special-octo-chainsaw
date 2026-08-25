@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "customConditions": ["development"],
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "exactOptionalPropertyTypes": true,
+    "jsx": "preserve",
+    "lib": ["es2022"],
+    "module": "node16",
+    "moduleResolution": "node16",
+    // To do: needed for DocSearch for now: <https://github.com/mdx-js/mdx/issues/1776#issuecomment-2349294900>.
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "es2022"
+  },
+  "exclude": ["**/coverage/", "**/node_modules/", "**/public/"],
+  "include": [
+    "**/*.cjs",
+    "**/*.js",
+    "**/*.jsx",
+    "packages/mdx/lib/types.d.ts",
+    "website/types.d.ts"
+  ]
+}
