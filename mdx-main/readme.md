@@ -1,3 +1,18 @@
+<div align="center">
+
+**Reference copy · Counsel AI workspace**
+
+This directory is an <strong>unmodified reference checkout</strong> of <a href="https://github.com/mdx-js/mdx"><strong>MDX</strong></a>,
+vendored as design material for <a href="../counsel-ai"><strong>Counsel AI</strong></a> — a local-first legal AI workbench.
+Logic was <em>extracted and rewritten</em> into the product (the frontmatter/component document model behind the MDX preview and templates); nothing here runs at runtime.
+Original <strong>MIT</strong> license text is preserved verbatim in <a href="./license">license</a>.
+
+<i>The original MDX documentation follows, unchanged.</i>
+
+</div>
+
+---
+
 [![MDX][githubusercontent-logo]][website]
 
 # Markdown for the component era

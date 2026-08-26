@@ -1,3 +1,18 @@
+<div align="center">
+
+**Reference copy · Counsel AI workspace**
+
+This directory is an <strong>unmodified reference checkout</strong> of <a href="https://github.com/ComposioHQ/composio"><strong>Composio</strong></a>,
+vendored as design material for <a href="../counsel-ai"><strong>Counsel AI</strong></a> — a local-first legal AI workbench.
+Logic was <em>extracted and rewritten</em> into the product (tool/action interface design and the consent-gated execution envelope); nothing here runs at runtime.
+Original <strong>Apache-2.0</strong> license text is preserved verbatim in <a href="./LICENSE">LICENSE</a>.
+
+<i>The original Composio documentation follows, unchanged.</i>
+
+</div>
+
+---
+
 <p align="center">
   <a href="https://composio.dev">
     <picture>

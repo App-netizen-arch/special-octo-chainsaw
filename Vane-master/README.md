@@ -1,3 +1,18 @@
+<div align="center">
+
+**Reference copy · Counsel AI workspace**
+
+This directory is an <strong>unmodified reference checkout</strong> of <a href="https://github.com/ItzCrazyKns/Vane"><strong>Vane / Perplexica</strong></a>,
+vendored as design material for <a href="../counsel-ai"><strong>Counsel AI</strong></a> — a local-first legal AI workbench.
+Logic was <em>extracted and rewritten</em> into the product (SearXNG integration patterns and search-result ranking/deduplication thresholds); nothing here runs at runtime.
+Original <strong>MIT</strong> license text is preserved verbatim in <a href="./LICENSE">LICENSE</a>.
+
+<i>The original Vane / Perplexica documentation follows, unchanged.</i>
+
+</div>
+
+---
+
 # Vane 🔍
 
 [![GitHub Repo stars](https://img.shields.io/github/stars/ItzCrazyKns/Vane?style=social)](https://github.com/ItzCrazyKns/Vane/stargazers)

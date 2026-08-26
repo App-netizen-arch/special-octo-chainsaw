@@ -1,3 +1,18 @@
+<div align="center">
+
+**Reference copy · Counsel AI workspace**
+
+This directory is an <strong>unmodified reference checkout</strong> of <a href="https://github.com/assafelovic/gpt-researcher"><strong>gpt-researcher</strong></a>,
+vendored as design material for <a href="../counsel-ai"><strong>Counsel AI</strong></a> — a local-first legal AI workbench.
+Logic was <em>extracted and rewritten</em> into the product (the research agent loop (plan → search → read → write), citation conventions and context-compression ideas); nothing here runs at runtime.
+Original <strong>Apache-2.0</strong> license text is preserved verbatim in <a href="./LICENSE">LICENSE</a>.
+
+<i>The original gpt-researcher documentation follows, unchanged.</i>
+
+</div>
+
+---
+
 <div align="center" id="top">
 
 <img src="https://github.com/assafelovic/gpt-researcher/assets/13554167/20af8286-b386-44a5-9a83-3be1365139c3" alt="Logo" width="80">
