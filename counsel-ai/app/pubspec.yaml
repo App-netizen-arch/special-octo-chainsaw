@@ -1,0 +1,40 @@
+name: counsel_ai
+description: Counsel AI — local-first legal AI workbench (desktop).
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  provider: ^6.1.2
+  http: ^1.2.2
+  web_socket_channel: ^3.0.1
+  flutter_markdown: ^0.7.7
+  file_picker: ^8.1.2
+  flutter_secure_storage: ^9.2.2
+  pdf: ^3.11.1
+  archive: ^3.6.1
+  shared_preferences: ^2.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Optional: drop Inter and SourceSerifPro .ttf files into app/fonts/ to get
+  # the exact brand typography, then uncomment:
+  # fonts:
+  #   - family: Inter
+  #     fonts:
+  #       - asset: fonts/Inter-Regular.ttf
+  #       - asset: fonts/Inter-SemiBold.ttf
+  #         weight: 600
+  #   - family: SourceSerifPro
+  #     fonts:
+  #       - asset: fonts/SourceSerifPro-Regular.ttf

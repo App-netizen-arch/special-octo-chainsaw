@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+backend/data/
+
+# Flutter / Dart
+app/build/
+.dart_tool/
+.flutter-plugins*
+*.iml
+.idea/
+
+# Env & local data
+.env
+*.log
+.tools-bin/
+
+# Runtime data
+backend/data/
+data/

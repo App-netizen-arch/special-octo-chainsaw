@@ -1,0 +1,18 @@
+# SearXNG settings for Counsel AI (mounted into the container).
+# Based on the upstream default settings with JSON output enabled — required
+# by the backend search client (Vane/Perplexica-style ?format=json calls).
+use_default_settings: true
+
+server:
+  secret_key: "counsel-ai-change-me"
+  limiter: false
+
+search:
+  formats:
+    - html
+    - json
+  safe_search: 0
+
+engines:
+  - name: wolframalpha
+    disabled: false

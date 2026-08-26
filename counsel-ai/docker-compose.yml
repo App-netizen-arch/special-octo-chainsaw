@@ -1,0 +1,38 @@
+# Counsel AI — unified conductor stack.
+# Research runs INSIDE the backend process (adapted gpt-researcher logic),
+# so only two containers are needed: the API and the SearXNG metasearch.
+
+services:
+  backend:
+    build: ./backend
+    container_name: counsel-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      COUNSEL_HOST: 0.0.0.0
+      COUNSEL_PORT: 8000
+      SEARXNG_URL: http://searxng:8080
+      COUNSEL_DATA_DIR: /data
+    volumes:
+      - counsel-data:/data
+      # Mount your GGUF model read-only instead of baking it into the image:
+      # - /path/to/models:/models:ro
+    depends_on:
+      - searxng
+    restart: unless-stopped
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: counsel-searxng
+    ports:
+      - "8888:8080"
+    volumes:
+      - ./infra/searxng:/etc/searxng
+    environment:
+      SEARXNG_BASE_URL: http://localhost:8888/
+    restart: unless-stopped
+
+volumes:
+  counsel-data:
