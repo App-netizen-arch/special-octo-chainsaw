@@ -1,20 +1,46 @@
-# Counsel AI backend dependencies.
-# Core (required):
-fastapi>=0.111
+# Counsel AI backend dependencies (production).
+# License notes: all packages are permissive (MIT/BSD/Apache-2.0/BSD-style);
+# see docs/LICENSES.md for full attribution.
+
+# --- core web framework ---
+fastapi>=0.115
 uvicorn[standard]>=0.30
 httpx>=0.27
-pydantic>=2.7
+pydantic[email]>=2.7
 python-dotenv>=1.0
 python-multipart>=0.0.9
 
-# Document parsing:
+# --- auth ---
+PyJWT>=2.8
+bcrypt>=4.1
+
+# --- database ---
+SQLAlchemy>=2.0
+alembic>=1.13
+# Optional: SQLCipher driver for an encrypted SQLite file at rest.
+# When absent the app still encrypts uploads/index and logs a warning.
+sqlcipher3-binary>=0.5.2; platform_system != "Windows"
+cryptography>=42.0
+keyring>=24.3
+
+# --- document parsing ---
 pypdf>=4.2
 python-docx>=1.1
 
-# Optional accelerators — the app degrades gracefully without them:
-#   llama-cpp-python      → local GGUF inference (Local mode)
-#   sentence-transformers → dense embeddings for RAG (falls back to TF-IDF)
-#   faiss-cpu             → FAISS vector index   (falls back to numpy-free cosine)
+# --- scheduling ---
+APScheduler>=3.10,<4
+
+# --- optional accelerators — the app degrades gracefully without them:
+#   llama-cpp-python       → local GGUF inference (Local mode)
+#   sentence-transformers  → dense embeddings for RAG (falls back to TF-IDF+BM25)
+#   faiss-cpu              → FAISS vector index (falls back to numpy-free cosine)
+#   spacy + en_core_web_sm → NER-grade PII detection (falls back to regexes)
 llama-cpp-python>=0.2.90; platform_machine != "armv7l"
 # sentence-transformers>=3.0
 # faiss-cpu>=1.8
+# spacy>=3.7
+
+# --- testing / security (dev & CI) ---
+pytest>=8.0
+pytest-asyncio>=0.23
+pip-audit>=2.7

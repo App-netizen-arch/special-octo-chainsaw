@@ -1,13 +1,13 @@
 """Web search client with legitimate-source-only enforcement.
 
-Rewritten in Python from Vane/Perplexica's SearXNG integration (MIT):
-`GET {SEARXNG_URL}/search?format=json&q=...&engines=a,b`, results normalized
-as {title,url,content}, then ranked/deduped by cosine similarity over text
-embeddings (keep >0.5 vs query, drop >0.75 vs kept items, cap at 20).
-Tavily is supported as a drop-in provider (its own scoring is reused).
+Adapted from Perplexica/Vane's SearXNG integration (MIT): results normalized
+as {title,url,content}, ranked/deduped by cosine similarity over hashed
+bag-of-words vectors (keep >0.5 vs query, drop >0.75 vs kept items).
+Tavily is a drop-in provider reusing its own scoring.
 
-Every result passes utils.domain_whitelist.is_legitimate_source BEFORE it can
-be returned — non-whitelisted hosts are dropped server-side, unconditionally.
+Every result passes ``utils.domain_whitelist.is_legitimate_source`` BEFORE it
+can reach any LLM or the UI. Provider calls are audited as external
+transmissions and counted in metrics.
 """
 
 from __future__ import annotations
@@ -21,7 +21,10 @@ from typing import Any, Optional
 import httpx
 
 from ..config import settings
+from ..database import record_audit
 from ..utils.domain_whitelist import filter_results
+from ..utils.logging_setup import new_correlation_id
+from ..utils.metrics import inc
 
 log = logging.getLogger("counsel.search")
 
@@ -29,11 +32,6 @@ _TOKEN_RE = re.compile(r"[a-z0-9]{2,}")
 STOPWORDS = frozenset(
     "the a an and or of to in on for with by from as at is are was were be been it its this that".split()
 )
-
-
-# ----------------------------------------------------------------- embeddings
-# Tiny hashed bag-of-words vectors keep the MVP dependency-free; swap for
-# sentence-transformers embeddings without changing call sites.
 
 
 def _tokens(text: str) -> list[str]:
@@ -131,37 +129,47 @@ async def search_tavily(query: str, max_results: int = 10) -> list[dict]:
 
 
 async def web_search(
-    query: str, max_results: int = 8, provider: Optional[str] = None
+    query: str, max_results: int = 8, provider: Optional[str] = None,
+    user_id: str | None = None,
 ) -> tuple[list[dict], str]:
     """Returns (filtered+ranked results, provider-used).
 
     Raises RuntimeError with a user-friendly message when no provider works.
+    Every successful provider call lands in the audit trail.
     """
     order = [provider] if provider else (
         ["auto"] if settings.search_provider == "auto" else [settings.search_provider, "auto"]
     )
     errors: list[str] = []
+    cid = new_correlation_id()
     for prov in order:
         try:
-            if prov in ("tavily", "auto"):
-                if settings.tavily_api_key:
-                    raw = await search_tavily(query, max_results)
-                    filtered = filter_results(raw)
-                    return rank_and_dedupe(query, filtered, cap=max_results), "tavily"
-                errors.append("tavily: no API key")
-            if prov in ("searxng", "auto"):
+            raw: list[dict] | None = None
+            used: str | None = None
+            if prov in ("tavily", "auto") and settings.tavily_api_key:
+                raw = await search_tavily(query, max_results)
+                used = "tavily"
+            elif prov in ("searxng", "auto"):
                 raw = await search_searxng(query, max_results)
-                filtered = filter_results(raw)
-                if raw and not filtered:
-                    raise RuntimeError("all results outside legitimate-source whitelist")
-                return rank_and_dedupe(query, filtered, cap=max_results), "searxng"
+                used = "searxng"
+            elif prov == "tavily":
+                errors.append("tavily: no API key")
+                continue
+            if raw is None or used is None:
+                continue
+            filtered = filter_results(raw)
+            record_audit(user_id, f"search.{used}_call", target=query[:200],
+                         detail={"raw": len(raw), "whitelisted": len(filtered)},
+                         correlation_id=cid)
+            inc("search.queries", labels={"provider": used})
+            if raw and not filtered:
+                raise RuntimeError("all results outside legitimate-source whitelist")
+            return rank_and_dedupe(query, filtered, cap=max_results), used
         except RuntimeError as exc:
             errors.append(f"{prov}: {exc}")
         except (httpx.HTTPError, ValueError) as exc:
             log.warning("provider %s failed: %s", prov, exc)
             errors.append(f"{prov}: unreachable")
-            if prov == "searxng":
-                continue
     raise RuntimeError(_no_provider_msg(errors))
 
 
