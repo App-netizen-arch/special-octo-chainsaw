@@ -7,14 +7,25 @@ import "dart:convert";
 import "package:http/http.dart" as http;
 
 import "../models/models.dart";
+import "auth_service.dart";
 
 class ApiClient {
-  ApiClient({required this.baseUrl, required this.token});
+  ApiClient({required this.baseUrl, this.authService});
 
   final String baseUrl;
-  final String token;
+  final AuthService? authService;
 
-  Map<String, String> get _headers => {"X-API-Token": token};
+  Future<Map<String, String>> get _headers async {
+    final headers = <String, String>{};
+    final token = await authService?.getToken();
+    if (token != null) {
+      headers['Authorization'] = 'Bearer $token';
+    } else {
+      // Fallback to legacy X-API-Token for backward compatibility
+      headers['X-API-Token'] = 'counsel-dev-token';
+    }
+    return headers;
+  }
 
   Uri _u(String path, [Map<String, dynamic>? query]) {
     final q = <String, dynamic>{...?query};
@@ -62,7 +73,7 @@ class ApiClient {
 
   Future<LegalDocument> uploadDocument(String filePath) async {
     final req = http.MultipartRequest("POST", _u("/api/documents"))
-      ..headers.addAll(_headers)
+      ..headers.addAll(await _headers)
       ..files.add(await http.MultipartFile.fromPath("file", filePath));
     final resp = await req.send().timeout(const Duration(minutes: 5));
     final body = jsonDecode(await resp.stream.bytesToString()) as Map<String, dynamic>;
@@ -109,24 +120,117 @@ class ApiClient {
   Future<Map<String, dynamic>> jurisdictions() async =>
       _json(await httpGet(_u("/api/settings/jurisdictions")));
 
+  // ------------------------------------------------------------ skills
+
+  Future<List<Skill>> skills() async {
+    final list = await _jsonList(await httpGet(_u("/api/skills")));
+    return list.whereType<Map<String, dynamic>>().map(Skill.fromJson).toList();
+  }
+
+  Future<Skill> createSkill(Map<String, dynamic> skillData) async {
+    final j = await _json(await httpPost(_u("/api/skills"), body: skillData));
+    return Skill.fromJson(j);
+  }
+
+  Future<void> updateSkill(String id, Map<String, dynamic> patch) async =>
+      httpPatch(_u("/api/skills/$id"), body: patch);
+
+  Future<void> deleteSkill(String id) async => httpDelete(_u("/api/skills/$id"));
+
+  Future<void> toggleSkill(String id, bool isEnabled) async =>
+      httpPatch(_u("/api/skills/$id/toggle"), body: {"is_enabled": isEnabled});
+
+  // --------------------------------------------------------- legal updates
+
+  Future<List<LegalUpdate>> legalUpdates({DateTime? since, int limit = 50}) async {
+    final query = <String, dynamic>{"limit": limit};
+    if (since != null) {
+      query["since"] = since.toIso8601String();
+    }
+    final list = await _jsonList(await httpGet(_u("/api/legal-updates", query)));
+    return list.whereType<Map<String, dynamic>>().map(LegalUpdate.fromJson).toList();
+  }
+
+  Future<LegalUpdate> getLegalUpdate(String id) async {
+    final j = await _json(await httpGet(_u("/api/legal-updates/$id")));
+    return LegalUpdate.fromJson(j);
+  }
+
+  // -------------------------------------------------------- verification
+
+  Future<VerificationReport> verifyDocument(
+    String documentId, {
+    List<String>? checks,
+  }) async {
+    final body = <String, dynamic>{};
+    if (checks != null && checks.isNotEmpty) {
+      body["checks"] = checks;
+    }
+    final j = await _json(await httpPost(
+      _u("/api/documents/$documentId/verify"),
+      body: body.isEmpty ? null : body,
+    ));
+    return VerificationReport.fromJson(j);
+  }
+
+  Future<VerificationReport> verifyText(String text, {List<String>? checks}) async {
+    final body = <String, dynamic>{"text": text};
+    if (checks != null && checks.isNotEmpty) {
+      body["checks"] = checks;
+    }
+    final j = await _json(await httpPost(
+      _u("/api/verify/text"),
+      body: body,
+    ));
+    return VerificationReport.fromJson(j);
+  }
+
+  // ------------------------------------------------------ tool connections
+
+  Future<List<ToolConnection>> toolConnections() async {
+    final list = await _jsonList(await httpGet(_u("/api/tools/connections")));
+    return list.whereType<Map<String, dynamic>>().map(ToolConnection.fromJson).toList();
+  }
+
+  Future<String> initiateToolConnection(String provider) async {
+    final j = await _json(await httpPost(_u("/api/tools/connections/$provider/initiate")));
+    return j["auth_url"] as String;
+  }
+
+  Future<void> completeToolConnection(String provider, String code) async {
+    await httpPost(_u("/api/tools/connections/$provider/complete"), body: {"code": code});
+  }
+
+  Future<void> disconnectTool(String provider) async =>
+      httpDelete(_u("/api/tools/connections/$provider"));
+
+  // ----------------------------------------------------------- audit logs
+
+  Future<List<AuditEntry>> auditLogs({DateTime? from, DateTime? to, int limit = 100}) async {
+    final query = <String, dynamic>{"limit": limit};
+    if (from != null) query["from"] = from.toIso8601String();
+    if (to != null) query["to"] = to.toIso8601String();
+    final list = await _jsonList(await httpGet(_u("/api/admin/audit-logs", query)));
+    return list.whereType<Map<String, dynamic>>().map(AuditEntry.fromJson).toList();
+  }
+
   // ------------------------------------------------------------- internals
 
-  Future<http.Response> httpGet(Uri uri) => http
-      .get(uri, headers: _headers)
-      .timeout(const Duration(seconds: 15));
+  Future<http.Response> httpGet(Uri uri) async =>
+      http.get(uri, headers: await _headers).timeout(const Duration(seconds: 15));
 
-  Future<http.Response> httpPost(Uri uri, {Object? body}) => http
-      .post(uri, headers: {..._headers, "Content-Type": "application/json"},
+  Future<http.Response> httpPost(Uri uri, {Object? body}) async => http
+      .post(uri, headers: {...await _headers, "Content-Type": "application/json"},
           body: jsonEncode(body ?? {}))
       .timeout(const Duration(seconds: 30));
 
-  Future<http.Response> httpPatch(Uri uri, {Object? body}) => http
-      .patch(uri, headers: {..._headers, "Content-Type": "application/json"},
+  Future<http.Response> httpPatch(Uri uri, {Object? body}) async => http
+      .patch(uri, headers: {...await _headers, "Content-Type": "application/json"},
           body: jsonEncode(body))
       .timeout(const Duration(seconds: 15));
 
-  Future<http.Response> httpDelete(Uri uri) =>
-      http.delete(uri, headers: _headers).timeout(const Duration(seconds: 15));
+  Future<http.Response> httpDelete(Uri uri) async =>
+      http.delete(uri, headers: await _headers).timeout(const Duration(seconds: 15));
 
   Future<dynamic> _decode(http.Response resp) async {
     final text = utf8.decode(resp.bodyBytes);
