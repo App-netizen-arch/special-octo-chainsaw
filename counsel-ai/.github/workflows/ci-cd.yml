@@ -1,0 +1,190 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  FLUTTER_VERSION: '3.24.0'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Backend tests and security scanning
+  backend-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pip-audit
+      
+      - name: Run tests
+        run: |
+          cd backend
+          pytest --cov=app --cov-report=xml
+      
+      - name: Security scan (pip-audit)
+        run: |
+          cd backend
+          pip-audit || true
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: backend/coverage.xml
+
+  # Flutter analysis
+  flutter-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          cd app
+          flutter pub get
+      
+      - name: Analyze
+        run: |
+          cd app
+          flutter analyze
+      
+      - name: Run tests
+        run: |
+          cd app
+          flutter test
+
+  # Build for all platforms (only on tags)
+  build-windows:
+    needs: [backend-test, flutter-analysis]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      
+      - name: Build Windows
+        run: |
+          cd app
+          flutter config --enable-windows-desktop
+          flutter build windows --release
+      
+      - name: Create MSI installer
+        run: |
+          # Use WiX Toolset or Inno Setup
+          echo "MSI creation requires WiX Toolset"
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: counsel-ai-windows
+          path: app/build/windows/runner/Release/
+
+  build-macos:
+    needs: [backend-test, flutter-analysis]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      
+      - name: Build macOS
+        run: |
+          cd app
+          flutter config --enable-macos-desktop
+          flutter build macos --release
+      
+      - name: Create DMG
+        run: |
+          echo "DMG creation requires create-dmg"
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: counsel-ai-macos
+          path: app/build/macos/Build/Products/Release/
+
+  build-linux:
+    needs: [backend-test, flutter-analysis]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Flutter dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+      
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      
+      - name: Build Linux
+        run: |
+          cd app
+          flutter config --enable-linux-desktop
+          flutter build linux --release
+      
+      - name: Create AppImage
+        run: |
+          echo "AppImage creation requires appimagetool"
+      
+      - name: Create .deb package
+        run: |
+          echo ".deb creation requires dpkg-deb"
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: counsel-ai-linux
+          path: app/build/linux/x64/release/bundle/
+
+  # Release creation
+  release:
+    needs: [build-windows, build-macos, build-linux]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: counsel-ai-*
+          merge-multiple: true
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            counsel-ai-windows/*
+            counsel-ai-macos/*.app
+            counsel-ai-linux/*
+          generate_release_notes: true
+          draft: false

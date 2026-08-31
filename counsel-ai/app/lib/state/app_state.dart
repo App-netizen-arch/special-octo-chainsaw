@@ -10,9 +10,10 @@ import "package:shared_preferences/shared_preferences.dart";
 
 import "../models/models.dart";
 import "../services/api_client.dart";
+import "../services/auth_service.dart";
 import "../services/websocket_client.dart";
 
-enum MainView { chat, document, settings }
+enum MainView { chat, document, settings, admin, legalUpdates, skills, research }
 
 enum ConnectionStatus { unknown, connected, offline }
 
@@ -25,26 +26,39 @@ class ResearchProgress {
 class AppState extends ChangeNotifier {
   // -------------------------------------------------------------- config --
   static const defaultBaseUrl = "http://127.0.0.1:8000";
-  static const defaultToken = "counsel-dev-token";
 
   String baseUrl = defaultBaseUrl;
   String get wsBase => baseUrl.replaceFirst(RegExp(r"^http"), "ws");
-  String apiToken = defaultToken;
-  String apiKey = ""; // lives ONLY in the OS keychain until sent per-turn
 
+  AuthService? _authService;
   ApiClient? _api;
+
+  AuthService get authService {
+    _authService ??= AuthService(baseUrl: baseUrl);
+    return _authService!;
+  }
+
   ApiClient get api {
-    _api ??= ApiClient(baseUrl: baseUrl, token: apiToken);
+    _api ??= ApiClient(baseUrl: baseUrl, authService: authService);
     return _api!;
   }
 
-  void reconnectClient() => _api = ApiClient(baseUrl: baseUrl, token: apiToken);
+  void reconnectClient() {
+    _authService = AuthService(baseUrl: baseUrl);
+    _api = ApiClient(baseUrl: baseUrl, authService: authService);
+  }
 
   // ---------------------------------------------------------------- state --
   ConnectionStatus backendStatus = ConnectionStatus.unknown;
   bool onboarded = false;
   MainView view = MainView.chat;
   ChatMode mode = ChatMode.local;
+
+  // Auth state
+  User? currentUser;
+  bool get isAuthenticated => authService.isAuthenticated;
+  bool get isAdmin => currentUser?.isAdmin ?? false;
+  bool get isLawyer => currentUser?.isLawyer ?? false;
 
   List<Conversation> conversations = [];
   String? activeConversationId;
@@ -61,6 +75,24 @@ class AppState extends ChangeNotifier {
   List<ToolDef> tools = [];
   String lastToolResult = "";
 
+  // Skills state
+  List<Skill> skills = [];
+  final Set<String> enabledSkillIds = {};
+
+  // Legal updates state
+  List<LegalUpdate> legalUpdates = [];
+  bool isLoadingUpdates = false;
+
+  // Verification state
+  VerificationReport? currentVerificationReport;
+  bool isVerifying = false;
+
+  // Tool connections state
+  List<ToolConnection> toolConnections = [];
+
+  // Audit logs (admin only)
+  List<AuditEntry> auditLogs = [];
+
   // document editor state
   String mdxText = "";
   double docSplitRatio = 0.45;
@@ -69,15 +101,26 @@ class AppState extends ChangeNotifier {
   Map<String, dynamic> jurisdictionData = {"countries": <String>[], "provinces": <String, dynamic>{}};
 
   Future<void> init() async {
+    await authService.init();
+    
     final prefs = await SharedPreferences.getInstance();
     baseUrl = prefs.getString("baseUrl") ?? defaultBaseUrl;
-    apiToken = prefs.getString("apiToken") ?? defaultToken;
     onboarded = prefs.getBool("onboarded") ?? false;
+    
+    // Update auth service base URL if it changed
+    if (_authService != null && _authService!.baseUrl != baseUrl) {
+      _authService = AuthService(baseUrl: baseUrl);
+    }
+    
     try {
       apiKey = await const FlutterSecureStorage().read(key: "provider_api_key") ?? "";
     } catch (_) {
       apiKey = ""; // keychain unavailable (e.g. some CI/linux without libsecret)
     }
+    
+    // Get current user from auth service
+    currentUser = authService.currentUser;
+    
     reconnectClient();
     await refreshAll();
   }
@@ -92,12 +135,32 @@ class AppState extends ChangeNotifier {
         api.documents(),
         api.tools(),
         api.jurisdictions(),
+        if (isAuthenticated) ...[
+          api.skills(),
+          api.legalUpdates(limit: 20),
+          api.toolConnections(),
+        ],
       ]);
-      onboardedBackend = (results[0] as Map)["onboarded"] as bool? ?? false;
-      conversations = ((results[1] as List)).cast<Conversation>();
-      documents = ((results[2] as List)).cast<LegalDocument>();
-      tools = ((results[3] as List)).cast<ToolDef>();
-      jurisdictionData = results[4] as Map<String, dynamic>;
+      
+      int idx = 0;
+      onboardedBackend = (results[idx++] as Map)["onboarded"] as bool? ?? false;
+      conversations = ((results[idx++] as List)).cast<Conversation>();
+      documents = ((results[idx++] as List)).cast<LegalDocument>();
+      tools = ((results[idx++] as List)).cast<ToolDef>();
+      jurisdictionData = results[idx++] as Map<String, dynamic>;
+      
+      if (isAuthenticated) {
+        skills = ((results[idx++] as List)).cast<Skill>();
+        legalUpdates = ((results[idx++] as List)).cast<LegalUpdate>();
+        toolConnections = ((results[idx++] as List)).cast<ToolConnection>();
+        
+        // Enable built-in skills by default
+        for (final skill in skills) {
+          if (skill.isBuiltIn && skill.isEnabled) {
+            enabledSkillIds.add(skill.id);
+          }
+        }
+      }
     } on ApiException {
       rethrow;
     }
@@ -105,6 +168,7 @@ class AppState extends ChangeNotifier {
   }
 
   bool onboardedBackend = false;
+  String apiKey = ""; // lives ONLY in the OS keychain until sent per-turn
 
   Future<bool> checkHealth() async {
     try {
@@ -116,6 +180,30 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     return backendStatus == ConnectionStatus.connected;
+  }
+
+  // ----------------------------------------------------------- auth flow --
+
+  Future<LoginResult> login(String email, String password) async {
+    final result = await authService.login(email, password);
+    if (result.success) {
+      currentUser = result.user;
+      reconnectClient();
+      await refreshAll();
+    }
+    return result;
+  }
+
+  Future<void> logout() async {
+    await authService.logout();
+    currentUser = null;
+    conversations = [];
+    messages = [];
+    skills = [];
+    legalUpdates = [];
+    toolConnections = [];
+    auditLogs = [];
+    notifyListeners();
   }
 
   // ----------------------------------------------------------- onboarding --
@@ -384,6 +472,131 @@ class AppState extends ChangeNotifier {
 
   Future<Map<String, dynamic>> previewTool(String slug, Map<String, dynamic> input) =>
       api.toolPreview(slug, input);
+
+  // ------------------------------------------------------------ skills --
+
+  Future<void> loadSkills() async {
+    if (!isAuthenticated) return;
+    skills = await api.skills();
+    for (final skill in skills) {
+      if (skill.isEnabled) {
+        enabledSkillIds.add(skill.id);
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<void> createSkill(Map<String, dynamic> skillData) async {
+    final newSkill = await api.createSkill(skillData);
+    skills.add(newSkill);
+    notifyListeners();
+  }
+
+  Future<void> updateSkill(String id, Map<String, dynamic> patch) async {
+    await api.updateSkill(id, patch);
+    final idx = skills.indexWhere((s) => s.id == id);
+    if (idx >= 0) {
+      final old = skills[idx];
+      skills[idx] = Skill(
+        id: old.id,
+        name: patch['name'] as String? ?? old.name,
+        description: patch['description'] as String? ?? old.description,
+        trigger: patch['trigger'] as String? ?? old.trigger,
+        config: patch['config'] as Map<String, dynamic>? ?? old.config,
+        isEnabled: patch['is_enabled'] as bool? ?? old.isEnabled,
+        isBuiltIn: old.isBuiltIn,
+        updatedAt: DateTime.now(),
+      );
+    }
+    notifyListeners();
+  }
+
+  Future<void> deleteSkill(String id) async {
+    await api.deleteSkill(id);
+    skills.removeWhere((s) => s.id == id);
+    enabledSkillIds.remove(id);
+    notifyListeners();
+  }
+
+  Future<void> toggleSkill(String id, bool isEnabled) async {
+    await api.toggleSkill(id, isEnabled);
+    if (isEnabled) {
+      enabledSkillIds.add(id);
+    } else {
+      enabledSkillIds.remove(id);
+    }
+    notifyListeners();
+  }
+
+  // --------------------------------------------------------- legal updates --
+
+  Future<void> loadLegalUpdates({DateTime? since}) async {
+    if (!isAuthenticated) return;
+    isLoadingUpdates = true;
+    notifyListeners();
+    try {
+      legalUpdates = await api.legalUpdates(since: since, limit: 50);
+    } finally {
+      isLoadingUpdates = false;
+      notifyListeners();
+    }
+  }
+
+  // -------------------------------------------------------- verification --
+
+  Future<VerificationReport> verifyDocument(String documentId, {List<String>? checks}) async {
+    isVerifying = true;
+    notifyListeners();
+    try {
+      currentVerificationReport = await api.verifyDocument(documentId, checks: checks);
+      return currentVerificationReport!;
+    } finally {
+      isVerifying = false;
+      notifyListeners();
+    }
+  }
+
+  Future<VerificationReport> verifyText(String text, {List<String>? checks}) async {
+    isVerifying = true;
+    notifyListeners();
+    try {
+      currentVerificationReport = await api.verifyText(text, checks: checks);
+      return currentVerificationReport!;
+    } finally {
+      isVerifying = false;
+      notifyListeners();
+    }
+  }
+
+  // ------------------------------------------------------ tool connections --
+
+  Future<void> loadToolConnections() async {
+    if (!isAuthenticated) return;
+    toolConnections = await api.toolConnections();
+    notifyListeners();
+  }
+
+  Future<String> initiateToolConnection(String provider) async {
+    return await api.initiateToolConnection(provider);
+  }
+
+  Future<void> completeToolConnection(String provider, String code) async {
+    await api.completeToolConnection(provider, code);
+    await loadToolConnections();
+  }
+
+  Future<void> disconnectTool(String provider) async {
+    await api.disconnectTool(provider);
+    await loadToolConnections();
+  }
+
+  // ----------------------------------------------------------- audit logs --
+
+  Future<void> loadAuditLogs({DateTime? from, DateTime? to, int limit = 100}) async {
+    if (!isAdmin) return;
+    auditLogs = await api.auditLogs(from: from, to: to, limit: limit);
+    notifyListeners();
+  }
 
   // ------------------------------------------------------------- settings --
 

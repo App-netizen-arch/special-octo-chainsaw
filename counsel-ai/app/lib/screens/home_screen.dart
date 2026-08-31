@@ -8,8 +8,11 @@ import "../theme.dart";
 import "../widgets/command_palette.dart";
 import "../widgets/mode_selector.dart";
 import "../widgets/privacy_indicator.dart";
+import "admin_screen.dart";
 import "chat_screen.dart";
 import "document_screen.dart";
+import "legal_updates_screen.dart";
+import "skills_screen.dart";
 import "settings_screen.dart";
 
 /// Widescreen desktop shell: collapsible 260px sidebar + main area.
@@ -29,6 +32,13 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final state = context.read<AppState>();
       if (state.backendStatus == ConnectionStatus.unknown) state.checkHealth();
+      // Load data based on auth status
+      if (state.isAuthenticated) {
+        state.loadSkills();
+        state.loadLegalUpdates();
+        state.loadToolConnections();
+        if (state.isAdmin) state.loadAuditLogs();
+      }
     });
   }
 
@@ -81,9 +91,33 @@ class _HomeScreenState extends State<HomeScreen> {
         return const DocumentScreen();
       case MainView.settings:
         return const SettingsScreen();
+      case MainView.admin:
+        return state.isAdmin ? const AdminScreen() : _accessDenied();
+      case MainView.legalUpdates:
+        return const LegalUpdatesScreen();
+      case MainView.skills:
+        return const SkillsScreen();
+      case MainView.research:
+        return const ResearchScreen();
       default:
         return const ChatScreen();
     }
+  }
+
+  Widget _accessDenied() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.lock_outline, size: 48, color: AppColors.textSecondary),
+          const SizedBox(height: 16),
+          Text("Access Denied", style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          Text("You don't have permission to view this page.", 
+               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary)),
+        ],
+      ),
+    );
   }
 }
 
@@ -146,6 +180,12 @@ class _Sidebar extends StatelessWidget {
           ),
         ),
         const Divider(color: AppColors.border),
+        if (state.isAuthenticated) ...[
+          _navItem(context, icon: Icons.auto_awesome_outlined, label: "Skills", selected: state.view == MainView.skills, onTap: () => context.read<AppState>().setView(MainView.skills)),
+          _navItem(context, icon: Icons.newspaper_outlined, label: "Legal Updates", selected: state.view == MainView.legalUpdates, onTap: () => context.read<AppState>().setView(MainView.legalUpdates)),
+        ],
+        if (state.isAdmin)
+          _navItem(context, icon: Icons.admin_panel_settings_outlined, label: "Admin", selected: state.view == MainView.admin, onTap: () => context.read<AppState>().setView(MainView.admin)),
         _navItem(context, icon: Icons.settings_outlined, label: "Settings", selected: state.view == MainView.settings, onTap: () => context.read<AppState>().setView(MainView.settings)),
         const SizedBox(height: 6),
         Row(children: [
