@@ -22,11 +22,11 @@ This guide covers deployment options for Counsel AI, from single-machine install
 - **Storage**: 50 GB SSD (more for multiple models)
 - **OS**: 
   - Windows 10/11 (64-bit)
-  - macOS 12+ (Monterey or later)
-  - Linux (Ubuntu 22.04+, Fedora 38+, or equivalent)
+  - Linux (Ubuntu 22.04+, Fedora 38+, Debian 11+, or equivalent)
+  - Android 10+ (mobile companion app)
 
 ### For Local LLM Inference
-- **GPU** (optional but recommended): NVIDIA RTX 3060+ with 12GB VRAM
+- **GPU** (optional but recommended): NVIDIA RTX 3060+ with 12GB VRAM (Windows/Linux)
 - **Additional RAM**: 32-64 GB for larger models (7B+)
 
 ### Network
@@ -35,6 +35,7 @@ This guide covers deployment options for Counsel AI, from single-machine install
   - Legal update monitoring
   - Research mode (search queries)
 - Local mode works offline after initial setup
+- Android: Wi-Fi recommended for model downloads
 
 ---
 
@@ -57,23 +58,6 @@ This guide covers deployment options for Counsel AI, from single-machine install
    - Launch from Start Menu
    - Complete onboarding wizard
    - Download a model or configure API keys
-
-### macOS
-
-1. **Download DMG**
-   ```bash
-   # Download counsel-ai-1.0.0.dmg from releases
-   ```
-
-2. **Install**
-   - Open DMG file
-   - Drag Counsel AI to Applications folder
-   - Eject DMG
-
-3. **First Launch**
-   - Open from Applications
-   - May need to approve in Security & Privacy settings
-   - Complete onboarding
 
 ### Linux (.deb)
 
@@ -98,6 +82,24 @@ chmod +x counsel-ai-1.0.0.AppImage
 # Optional: Integrate with desktop
 ./counsel-ai-1.0.0.AppImage --appimage-extract-and-run
 ```
+
+### Android
+
+1. **Download APK**
+   ```bash
+   # Download counsel-ai-1.0.0.apk from releases or Google Play
+   ```
+
+2. **Install**
+   - Enable "Install from Unknown Sources" if sideloading
+   - Tap the APK file to install
+   - Grant storage permissions when prompted
+
+3. **First Launch**
+   - Open Counsel AI from app drawer
+   - Complete onboarding wizard
+   - Download a model over Wi-Fi or configure API keys
+   - Note: Android uses reduced-size models optimized for mobile
 
 ---
 
@@ -224,8 +226,8 @@ Each user has isolated:
 | OS | Data Directory | Config |
 |----|---------------|--------|
 | Windows | `%APPDATA%\CounselAI\` | Same |
-| macOS | `~/Library/Application Support/CounselAI/` | Same |
 | Linux | `~/.local/share/CounselAI/` | `$XDG_DATA_HOME` |
+| Android | `/sdcard/Android/data/com.counselai.app/files/` | Internal storage |
 
 ### Backup Script
 
@@ -243,10 +245,13 @@ DATE=$(date +%Y%m%d_%H%M%S)
 # Stop application if running
 # (Optional but recommended for consistent backups)
 
-# Create backup
+# Create backup (Linux)
 tar -czf "$BACKUP_DIR/counsel_backup_$DATE.tar.gz" \
   ~/.local/share/CounselAI/data/ \
   ~/.local/share/CounselAI/models/
+
+# Create backup (Windows PowerShell)
+# Compress-Archive -Path "$env:APPDATA\CounselAI\data","$env:APPDATA\CounselAI\models" -DestinationPath "$BACKUP_DIR\counsel_backup_$DATE.zip"
 
 echo "Backup created: counsel_backup_$DATE.tar.gz"
 ```
@@ -261,13 +266,24 @@ tar -xzf counsel_backup_20240101_120000.tar.gz -C ~/
 # Restart application
 ```
 
+### Android Backup (ADB)
+
+```bash
+# Backup data directory
+adb pull /sdcard/Android/data/com.counselai.app/files/ ./counsel_android_backup/
+
+# Restore data directory
+adb push ./counsel_android_backup/ /sdcard/Android/data/com.counselai.app/files/
+```
+
 ### Database Backup (SQLCipher)
 
 If using encrypted SQLite:
 ```bash
-# The encryption key is stored in OS keychain
+# The encryption key is stored in OS secure storage
 # Backup includes the encrypted DB file
 # Key must be restored separately if migrating systems
+# On Android, the key is backed up with app data
 ```
 
 ---
@@ -277,9 +293,9 @@ If using encrypted SQLite:
 ### Desktop App (Auto-Update)
 
 The app checks for updates on launch:
-- **Windows**: WinSparkle
-- **macOS**: Sparkle
-- **Linux**: Manual update or package manager
+- **Windows**: WinSparkle auto-update framework
+- **Linux**: Manual update or package manager (.deb receives updates via apt)
+- **Android**: Google Play Store or sideloaded APK update
 
 ### Manual Update
 
@@ -294,6 +310,13 @@ The app checks for updates on launch:
 3. **Verify**
    - Check version in Settings > About
    - Test core functionality
+
+### Android Update
+
+For APK sideloading:
+1. Download latest APK from releases
+2. Install over existing version (data preserved)
+3. For Google Play: automatic updates enabled by default
 
 ### Docker Update
 
@@ -336,13 +359,6 @@ python scripts/model_downloader.py verify /path/to/model.gguf
 # Reinstall Visual C++ Redistributables
 ```
 
-**macOS:**
-```bash
-# Check Console.app for crash reports
-# Try: xattr -cr /Applications/Counsel\ AI.app
-# Reinstall from DMG
-```
-
 **Linux:**
 ```bash
 # Check dependencies
@@ -350,6 +366,22 @@ ldd $(which counsel-ai)
 
 # Install missing libraries
 sudo apt-get install libgtk-3-0 libwebkit2gtk-4.0-37
+
+# Check logs
+journalctl -u counsel-ai  # If installed as service
+# Or check ~/.local/share/CounselAI/logs/
+```
+
+**Android:**
+```bash
+# Check logcat for errors
+adb logcat | grep CounselAI
+
+# Clear app data (last resort)
+adb shell pm clear com.counselai.app
+
+# Reinstall APK
+adb install counsel-ai-1.0.0.apk
 ```
 
 #### Backend Connection Failed

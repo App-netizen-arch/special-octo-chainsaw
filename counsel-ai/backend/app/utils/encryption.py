@@ -4,8 +4,11 @@ Key management
 --------------
 The master key is a 32-byte value that lives, in order of preference:
 
-1. The OS keychain via the ``keyring`` package ("CounselAI" service,
+1. The OS secure storage via the ``keyring`` package ("CounselAI" service,
    "instance-key" entry) — set up by the desktop app on first run.
+   - Windows: Windows Credential Manager
+   - Linux: Secret Service API (GNOME Keyring / KWallet) or KeePass
+   - Android: Android KeyStore (via Flutter secure storage, forwarded to backend)
 2. A zero-permission instance key file ``data/.instance.key`` (chmod 0600)
    created on first use.
 
@@ -37,7 +40,8 @@ def _load_or_create_key() -> bytes:
         if _master_key is not None:
             return _master_key
 
-        # 1) OS keychain
+        # 1) OS secure storage (keyring supports Windows Credential Manager,
+        #    Linux Secret Service/KWallet, and generic fallback)
         try:
             import keyring
 
@@ -45,7 +49,7 @@ def _load_or_create_key() -> bytes:
             if stored:
                 _master_key = base64.urlsafe_b64decode(stored.encode())
                 return _master_key
-        except Exception:  # noqa: BLE001 — keychain optional
+        except Exception:  # noqa: BLE001 — secure storage optional
             pass
 
         # 2) Instance key file
@@ -66,7 +70,7 @@ def _load_or_create_key() -> bytes:
         except OSError as exc:  # pragma: no cover
             log.error("could not persist instance key: %s", exc)
 
-        # best effort: also push into the keychain for next boot
+        # best effort: also push into secure storage for next boot
         try:
             import keyring
 

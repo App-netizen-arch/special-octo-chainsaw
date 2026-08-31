@@ -1,7 +1,8 @@
 #!/bin/bash
 # Counsel AI - Build all platform installers
 # Usage: ./build_all.sh [VERSION] [--platform PLATFORM]
-# Platforms: windows, macos, linux, all (default)
+# Platforms: windows, linux, android, all (default)
+# Note: macOS/iOS support has been removed.
 
 set -euo pipefail
 
@@ -28,12 +29,12 @@ Usage: $0 [VERSION] [--platform PLATFORM]
 
 Arguments:
   VERSION     Version number (default: 1.0.0)
-  --platform  Target platform: windows, macos, linux, or all (default)
+  --platform  Target platform: windows, linux, android, or all (default)
 
 Examples:
   $0                    # Build all platforms with version 1.0.0
   $0 1.2.0              # Build all platforms with version 1.2.0
-  $0 1.2.0 --platform macos  # Build only macOS
+  $0 1.2.0 --platform linux  # Build only Linux
 
 Prerequisites:
   Windows (MSI):
@@ -41,23 +42,21 @@ Prerequisites:
     - Flutter Windows build tools
     - Visual Studio Build Tools
     
-  macOS (DMG):
-    - Xcode command line tools
-    - create-dmg (optional, has fallback)
-    - Flutter macOS build tools
-    - Apple Developer account (for signing/notarization)
-    
   Linux (.deb/.AppImage):
     - fpm (gem install fpm)
     - appimagetool
     - Flutter Linux build tools
+    
+  Android (APK/AAB):
+    - Android SDK with ANDROID_HOME set
+    - Flutter Android build tools
+    - Java JDK 11+
 
 Environment Variables (optional):
-  CODESIGN_IDENTITY   macOS code signing identity
-  APPLE_ID            Apple ID for notarization
-  APPLE_PASSWORD      App-specific password
-  APPLE_TEAM_ID       Apple Team ID
   SIGNTOOL_PATH       Path to Windows signtool
+  ANDROID_HOME        Android SDK path (required for Android build)
+  KEYSTORE_PATH       Path to Android keystore for signing
+  KEYSTORE_PASSWORD   Keystore password
 
 EOF
 }
@@ -76,20 +75,6 @@ build_windows() {
     log_info "Windows installer created in scripts/output/windows/"
 }
 
-build_macos() {
-    log_info "Building macOS DMG..."
-    
-    if [[ "$(uname)" != "Darwin" ]]; then
-        log_warn "macOS build should run on macOS. Attempting anyway..."
-    fi
-    
-    cd "$SCRIPT_DIR"
-    chmod +x create_dmg.sh
-    ./create_dmg.sh "$VERSION"
-    
-    log_info "macOS DMG created in scripts/output/macos/"
-}
-
 build_linux() {
     log_info "Building Linux packages..."
     
@@ -102,6 +87,26 @@ build_linux() {
     ./build_linux.sh "$VERSION"
     
     log_info "Linux packages created in scripts/output/linux/"
+}
+
+build_android() {
+    log_info "Building Android APK..."
+    
+    if [ -z "${ANDROID_HOME:-}" ]; then
+        log_error "ANDROID_HOME not set. Please set it to your Android SDK path."
+        return 1
+    fi
+    
+    cd "$ROOT_DIR/app"
+    
+    if ! command -v flutter &> /dev/null; then
+        log_error "Flutter not found. Please install Flutter."
+        return 1
+    fi
+    
+    flutter build apk --release
+    
+    log_info "Android APK created in app/build/app/outputs/flutter-apk/"
 }
 
 # Parse arguments
@@ -128,22 +133,23 @@ echo "=========================================="
 echo "Counsel AI Installer Builder"
 echo "Version: $VERSION"
 echo "Platform: $PLATFORM"
+echo "Supported: Windows, Linux, Android"
 echo "=========================================="
 
 case "$PLATFORM" in
     windows)
         build_windows
         ;;
-    macos)
-        build_macos
-        ;;
     linux)
         build_linux
         ;;
+    android)
+        build_android
+        ;;
     all)
         build_windows || log_warn "Windows build failed (expected on non-Windows)"
-        build_macos || log_warn "macOS build failed (expected on non-macOS)"
         build_linux
+        build_android || log_warn "Android build failed (ANDROID_HOME not set or Android SDK missing)"
         ;;
     *)
         log_error "Unknown platform: $PLATFORM"
@@ -158,7 +164,8 @@ echo "Build Summary"
 echo "=========================================="
 echo "Check the output directories:"
 echo "  Windows: scripts/output/windows/"
-echo "  macOS:   scripts/output/macos/"
 echo "  Linux:   scripts/output/linux/"
+echo "  Android: app/build/app/outputs/flutter-apk/"
 echo ""
 log_info "Build complete!"
+

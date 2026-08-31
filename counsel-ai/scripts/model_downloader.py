@@ -70,14 +70,16 @@ DEFAULT_MANIFEST = {
 
 
 def get_app_data_dir() -> Path:
-    """Get platform-specific app data directory."""
+    """Get platform-specific app data directory for Windows, Linux, and Android."""
     if sys.platform == "win32":
         base = Path(os.environ.get("APPDATA", r"C:\Users\Public"))
         return base / "CounselAI" / "models"
-    elif sys.platform == "darwin":
-        base = Path.home() / "Library" / "Application Support"
-        return base / "CounselAI" / "models"
+    elif sys.platform == "android":
+        # Android external storage directory
+        base = Path(os.environ.get("EXTERNAL_STORAGE", "/sdcard"))
+        return base / "Android" / "data" / "com.counselai.app" / "files" / "models"
     else:
+        # Linux (and other Unix-like systems)
         base = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
         return base / "CounselAI" / "models"
 

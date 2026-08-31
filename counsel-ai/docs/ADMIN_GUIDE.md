@@ -12,8 +12,8 @@
 
 ### System Requirements
 - **Windows:** 10/11 (64-bit), 8GB RAM, 10GB storage
-- **macOS:** 12+, Intel/Apple Silicon, 8GB RAM, 10GB storage
 - **Linux:** Ubuntu 20.04+/Debian 11+, 8GB RAM, 10GB storage
+- **Android:** Android 10+, 4GB RAM, 5GB storage (mobile companion app)
 
 ### Silent Installation (Enterprise)
 
@@ -22,15 +22,23 @@
 msiexec /i CounselAI-1.0.0.msi /quiet ADDLOCAL=all API_KEY="your-api-key"
 ```
 
-**macOS:**
-```bash
-sudo installer -pkg CounselAI-1.0.0.pkg -target /
-```
-
 **Linux (.deb):**
 ```bash
 sudo dpkg -i counsel-ai_1.0.0_amd64.deb
 ```
+
+**Linux (AppImage):**
+```bash
+chmod +x counsel-ai-1.0.0.AppImage
+./counsel-ai-1.0.0.AppImage
+```
+
+**Android:**
+```bash
+adb install counsel-ai-1.0.0.apk
+```
+
+For enterprise Android deployment, use MDM solutions or Google Play Private Channel.
 
 ### First-Time Setup
 1. Launch Counsel AI from Applications/Start Menu
@@ -68,7 +76,7 @@ sudo dpkg -i counsel-ai_1.0.0_amd64.deb
 ### API Mode
 1. Go to **Settings → Model**
 2. Select provider (DeepSeek, OpenAI-compatible)
-3. Enter API key (stored in OS keychain)
+3. Enter API key (stored in secure storage)
 4. Toggle "API Mode" in mode selector
 
 ### Model Licensing
@@ -84,7 +92,7 @@ Counsel AI only includes commercially-licensed models:
 ### Encryption
 - SQLite database: AES-256-GCM encrypted
 - Uploaded documents: Encrypted at rest
-- API keys: OS keychain (Keychain/Keyring/Credential Manager)
+- API keys: OS secure storage (Windows Credential Manager, Linux Secret Service/KWallet, Android KeyStore)
 
 ### Two-Factor Authentication
 1. **Admin → Firm Settings → Privacy & Security**
@@ -109,17 +117,22 @@ Configure retention period:
 # Windows
 copy "%APPDATA%\CounselAI\counsel.db" backup-location\
 
-# macOS
-cp ~/Library/Application\ Support/CounselAI/counsel.db backup-location/
-
 # Linux
 cp ~/.local/share/CounselAI/counsel.db backup-location/
+
+# Android (requires ADB)
+adb pull /sdcard/Android/data/com.counselai.app/files/counsel.db backup-location/
 ```
 
 ### Restore from Backup
 1. Close Counsel AI completely
 2. Replace `counsel.db` with backup
 3. Restart application
+
+**Note for Android:** Use ADB to restore:
+```bash
+adb push counsel.db /sdcard/Android/data/com.counselai.app/files/
+```
 
 ### Clear All Data
 For complete wipe:
@@ -133,12 +146,12 @@ For complete wipe:
 1. Check if port 8000 is available
 2. Review logs at:
    - Windows: `%APPDATA%\CounselAI\logs\`
-   - macOS: `~/Library/Logs/CounselAI/`
    - Linux: `~/.local/share/CounselAI/logs/`
+   - Android: Use `adb logcat | grep CounselAI`
 
 ### Model Loading Issues
 - Verify GGUF file integrity (checksum provided)
-- Ensure sufficient RAM (minimum 8GB)
+- Ensure sufficient RAM (minimum 8GB for desktop, 4GB for Android)
 - Try smaller model variant
 
 ### API Connection Errors
@@ -147,9 +160,14 @@ For complete wipe:
 3. Review firewall rules for outbound HTTPS
 
 ### Performance Issues
-- Enable GPU offload in Settings → Advanced
+- Enable GPU offload in Settings → Advanced (Windows/Linux with CUDA/Vulkan)
 - Reduce context window size
 - Use smaller model variant
+
+### Android-Specific Issues
+- **Storage permissions:** Ensure app has storage permission enabled
+- **Model downloads:** Use Wi-Fi for large model downloads
+- **Background processing:** Disable battery optimization for background tasks
 
 ## Support
 
