@@ -1,0 +1,32 @@
+# Counsel AI — Flutter Linux wrapper
+#
+# Add this to your ~/.bashrc to make `flutter` automatically use the
+# project-local wrapper when you're in the counsel-ai/app directory.
+# This fixes conda/miniforge toolchain pollution for Linux builds.
+#
+# Usage:
+#   echo 'source /home/amanoy/Freelancing\ /special-octo-chainsaw/counsel-ai/app/.bashrc_flutter' >> ~/.bashrc
+#   source ~/.bashrc
+#
+# After that, just use `flutter` normally from the project directory:
+#   flutter run -d linux
+#   flutter build linux --release
+
+if [ -n "$BASH_VERSION" ]; then
+  _counsel_ai_flutter_wrapper() {
+    local project_dir="/home/amanoy/Freelancing /special-octo-chainsaw/counsel-ai/app"
+    local wrapper="$project_dir/.bin/flutter"
+
+    if [ -d "$project_dir" ] && [ -x "$wrapper" ]; then
+      local current_dir="$(pwd)"
+      if [[ "$current_dir" == "$project_dir"* ]]; then
+        "$wrapper" "$@"
+        return $?
+      fi
+    fi
+
+    command flutter "$@"
+  }
+
+  alias flutter='_counsel_ai_flutter_wrapper'
+fi

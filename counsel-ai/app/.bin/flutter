@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Project-local flutter wrapper for counsel-ai/app.
+#
+# When invoked from within this Flutter project, this wrapper sanitizes
+# conda/miniforge toolchain pollution so Linux builds/runs use the system
+# GTK/Pango stack instead of incompatible conda libraries.
+#
+# For all other projects, it falls back to the real flutter binary.
+
+set -euo pipefail
+
+# Find the real flutter binary, bypassing any wrappers
+REAL_FLUTTER=""
+for candidate in \
+  "/home/amanoy/flutter/bin/flutter" \
+  "/home/amanoy/development/flutter/bin/flutter" \
+  "$(command -v flutter 2>/dev/null || true)"
+do
+  if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    REAL_FLUTTER="$candidate"
+    break
+  fi
+done
+
+if [ -z "$REAL_FLUTTER" ]; then
+  echo "flutter not found in PATH" >&2
+  exit 1
+fi
+
+# Detect if we're inside the counsel-ai/app project by looking for key files
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [ -f "$PROJECT_DIR/.metadata" ] && [ -d "$PROJECT_DIR/lib" ] && [ -d "$PROJECT_DIR/linux" ]; then
+  # We're in the Flutter project root or a subdirectory
+  export REAL_FLUTTER
+  exec "$PROJECT_DIR/flutter_linux.sh" "$@"
+else
+  # Not our project, pass through
+  exec "$REAL_FLUTTER" "$@"
+fi

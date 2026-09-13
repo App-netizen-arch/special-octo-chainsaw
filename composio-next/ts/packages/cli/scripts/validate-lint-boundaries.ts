@@ -10,6 +10,7 @@
 //   tsx ./scripts/validate-lint-boundaries.ts --update   # regenerate manifest
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   collectBoundaryManifest,
@@ -18,7 +19,7 @@ import {
   type BoundaryManifest,
 } from './lint-boundaries';
 
-const scriptDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(scriptDir, '..');
 const srcRoot = path.join(packageRoot, 'src');
 const manifestPath = path.join(packageRoot, 'lint-boundaries.json');

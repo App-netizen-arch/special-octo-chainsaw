@@ -117,7 +117,7 @@ def test_admin_required_for_user_management(client, lawyer_headers):
 
 def test_audit_log_written_on_login(client, lawyer_headers, admin_tokens):
     client.post("/api/users/logout", headers=lawyer_headers)
-    resp = client.get("/api/admin/audit",
+    resp = client.get("/api/admin/audit-logs",
                       headers={"Authorization": f"Bearer {admin_tokens['access']}"})
     assert resp.status_code == 200
     actions = [a["action"] for a in resp.json()]

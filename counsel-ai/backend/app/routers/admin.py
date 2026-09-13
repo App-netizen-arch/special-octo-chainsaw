@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -193,7 +194,7 @@ async def get_audit_logs(
                 "target": r.target,
                 "detail": r.detail_json,
                 "correlation_id": r.correlation_id,
-                "created_at": r.created_at.isoformat() if r.created_at else "",
+                "created_at": datetime.fromtimestamp(r.created_at).isoformat() if r.created_at else "",
             }
             for r in rows
         ]

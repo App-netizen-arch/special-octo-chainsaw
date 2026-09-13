@@ -12,7 +12,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "-v"
+addopts = "-v --forked"
 testpaths = ["tests"]
 python_files = "test_*.py"
 asyncio_fixture_loop_scope = "function"

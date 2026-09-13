@@ -11,7 +11,7 @@ Original <strong>MIT</strong> license text is preserved verbatim in <a href="./l
 
 </div>
 
----
+***
 
 [![MDX][githubusercontent-logo]][website]
 

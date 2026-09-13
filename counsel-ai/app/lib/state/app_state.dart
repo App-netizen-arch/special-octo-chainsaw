@@ -28,6 +28,7 @@ class AppState extends ChangeNotifier {
   static const defaultBaseUrl = "http://127.0.0.1:8000";
 
   String baseUrl = defaultBaseUrl;
+  String apiToken = "";
   String get wsBase => baseUrl.replaceFirst(RegExp(r"^http"), "ws");
 
   AuthService? _authService;

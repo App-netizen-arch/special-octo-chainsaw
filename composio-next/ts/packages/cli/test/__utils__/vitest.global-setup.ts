@@ -2,8 +2,9 @@ import { BunFileSystem, BunContext } from '@effect/platform-bun';
 import { Command, FileSystem } from '@effect/platform';
 import { Effect, Option, Logger, LogLevel } from 'effect';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const __dirname = path.resolve(path.dirname(new URL(import.meta.url).pathname));
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Sets up TypeScript fixtures by simulating `@composio/core` package installation via `pnpm`.

@@ -12,8 +12,9 @@ import "admin_screen.dart";
 import "chat_screen.dart";
 import "document_screen.dart";
 import "legal_updates_screen.dart";
-import "skills_screen.dart";
+import "research_screen.dart";
 import "settings_screen.dart";
+import "skills_screen.dart";
 
 /// Widescreen desktop shell: collapsible 260px sidebar + main area.
 class HomeScreen extends StatefulWidget {
@@ -98,7 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case MainView.skills:
         return const SkillsScreen();
       case MainView.research:
-        return const ResearchScreen();
+        return ResearchScreen();
       default:
         return const ChatScreen();
     }

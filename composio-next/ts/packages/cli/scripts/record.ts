@@ -17,6 +17,7 @@
 import process from 'node:process';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { Config, ConfigProvider, Effect, Logger, Layer, LogLevel, Ref } from 'effect';
 import { BunContext, BunFileSystem, BunRuntime } from '@effect/platform-bun';
 import { FileSystem } from '@effect/platform';
@@ -320,9 +321,7 @@ function recordAll() {
     yield* Effect.sync(() => p.intro('composio record'));
 
     // Tape-embedded paths are relative to the cli package root (ts/packages/cli/).
-    const scriptDir = path.resolve(
-      import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname)
-    );
+    const scriptDir = path.resolve(fileURLToPath(import.meta.url), '..');
     const cliRoot = path.resolve(scriptDir, '..');
     const recordingsDir = path.resolve(scriptDir, '..', 'recordings');
     const configPath = path.join(recordingsDir, 'recordings.yaml');

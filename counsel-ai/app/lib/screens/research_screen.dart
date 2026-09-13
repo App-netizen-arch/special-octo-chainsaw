@@ -134,7 +134,7 @@ class _ResearchScreenState extends State<ResearchScreen> {
                                   children: [
                                     Row(
                                       children: [
-                                        Icon(Icons.summary, color: AppColors.accent),
+                                        Icon(Icons.description, color: AppColors.accent),
                                         const SizedBox(width: 8),
                                         Text(
                                           'Research Summary',
@@ -183,13 +183,15 @@ class _ResearchScreenState extends State<ResearchScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            'AI-powered research with verified citations from legitimate sources',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: AppColors.textSecondary,
+          SizedBox(
+            width: 400,
+            child: Text(
+              'AI-powered research with verified citations from legitimate sources',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: AppColors.textSecondary,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
-            maxWidth: 400,
           ),
           const SizedBox(height: 24),
           Card(

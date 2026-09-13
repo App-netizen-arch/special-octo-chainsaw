@@ -238,7 +238,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.trigger, size: 12, color: AppColors.textSecondary),
+                      const Icon(Icons.play_arrow, size: 12, color: AppColors.textSecondary),
                       const SizedBox(width: 4),
                       Text(
                         'Trigger: "${skill.trigger}"',
