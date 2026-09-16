@@ -13,10 +13,10 @@ class AdminScreen extends StatefulWidget {
   State<AdminScreen> createState() => _AdminScreenState();
 }
 
-class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStateMixin {
+class _AdminScreenState extends State<AdminScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _isLoading = false;
-  List<User> _users = [];
   List<AuditEntry> _auditLogs = [];
   Map<String, dynamic> _firmSettings = {};
 
@@ -36,12 +36,12 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     final appState = context.read<AppState>();
-    
+
     try {
       // Load users (admin endpoint)
       // Load audit logs
       _auditLogs = await appState.api.auditLogs(limit: 100);
-      
+
       // Load firm settings
       final settings = await appState.api.settings();
       _firmSettings = settings;
@@ -141,7 +141,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.history_toggle_off, size: 64, color: AppColors.textSecondary),
+            Icon(Icons.history_toggle_off,
+                size: 64, color: AppColors.textSecondary),
             const SizedBox(height: 16),
             Text(
               'No Audit Logs',
@@ -167,7 +168,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       itemBuilder: (context, index) {
         final entry = _auditLogs[index];
         final dateFmt = DateFormat('yyyy-MM-dd HH:mm:ss');
-        
+
         return Card(
           margin: const EdgeInsets.only(bottom: 8),
           child: ListTile(
@@ -180,7 +181,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('User: ${entry.userId}'),
-                Text('Resource: ${entry.resourceType}${entry.resourceId != null ? '/${entry.resourceId}' : ''}'),
+                Text(
+                    'Resource: ${entry.resourceType}${entry.resourceId != null ? '/${entry.resourceId}' : ''}'),
                 Text(
                   dateFmt.format(entry.timestamp),
                   style: theme.textTheme.bodySmall,
@@ -197,7 +199,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
   Widget _getActionIcon(String action) {
     IconData icon;
     Color color;
-    
+
     if (action.contains('create') || action.contains('login')) {
       icon = Icons.check_circle;
       color = AppColors.success;
@@ -208,7 +210,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
       icon = Icons.info;
       color = AppColors.accent;
     }
-    
+
     return Icon(icon, color: color);
   }
 
@@ -227,7 +229,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               onChanged: (value) {
                 // Update setting
               },
-              activeColor: AppColors.accent,
+              activeThumbColor: AppColors.accent,
             ),
             SwitchListTile(
               title: const Text('Audit Logging'),
@@ -236,7 +238,7 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
               onChanged: (value) {
                 // Update setting
               },
-              activeColor: AppColors.accent,
+              activeThumbColor: AppColors.accent,
             ),
           ],
         ),
@@ -247,7 +249,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
           [
             ListTile(
               title: const Text('Default Model'),
-              subtitle: Text(_firmSettings['default_model'] as String? ?? 'local'),
+              subtitle:
+                  Text(_firmSettings['default_model'] as String? ?? 'local'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 // Show model selection dialog
@@ -255,7 +258,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             ),
             ListTile(
               title: const Text('Allowed External APIs'),
-              subtitle: Text(_firmSettings['allowed_apis'] as String? ?? 'None'),
+              subtitle:
+                  Text(_firmSettings['allowed_apis'] as String? ?? 'None'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 // Show API configuration
@@ -279,7 +283,8 @@ class _AdminScreenState extends State<AdminScreen> with SingleTickerProviderStat
             ListTile(
               title: const Text('Clear All Data'),
               subtitle: const Text('Permanently delete all local data'),
-              leading: const Icon(Icons.delete_forever, color: AppColors.danger),
+              leading:
+                  const Icon(Icons.delete_forever, color: AppColors.danger),
               onTap: () {
                 _showClearDataConfirmation(context, appState);
               },

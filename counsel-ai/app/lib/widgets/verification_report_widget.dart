@@ -110,7 +110,9 @@ class VerificationReportWidget extends StatelessWidget {
               _buildSection(
                 theme,
                 'Citation Validation',
-                report.citationIssues.map((i) => _buildCitationIssue(theme, i)).toList(),
+                report.citationIssues
+                    .map((i) => _buildCitationIssue(theme, i))
+                    .toList(),
               ),
             ],
             if (report.sourceIssues.isNotEmpty) ...[
@@ -118,7 +120,9 @@ class VerificationReportWidget extends StatelessWidget {
               _buildSection(
                 theme,
                 'Source Existence',
-                report.sourceIssues.map((i) => _buildSourceIssue(theme, i)).toList(),
+                report.sourceIssues
+                    .map((i) => _buildSourceIssue(theme, i))
+                    .toList(),
               ),
             ],
             if (report.clauseIssues.isNotEmpty) ...[
@@ -126,7 +130,9 @@ class VerificationReportWidget extends StatelessWidget {
               _buildSection(
                 theme,
                 'Clause Structure',
-                report.clauseIssues.map((i) => _buildClauseIssue(theme, i)).toList(),
+                report.clauseIssues
+                    .map((i) => _buildClauseIssue(theme, i))
+                    .toList(),
               ),
             ],
             if (report.piiFindings.isNotEmpty) ...[
@@ -134,7 +140,9 @@ class VerificationReportWidget extends StatelessWidget {
               _buildSection(
                 theme,
                 'PII Detection',
-                report.piiFindings.map((i) => _buildPiiFinding(theme, i)).toList(),
+                report.piiFindings
+                    .map((i) => _buildPiiFinding(theme, i))
+                    .toList(),
               ),
             ],
             if (report.jurisdictionCheck != null) ...[
@@ -168,9 +176,9 @@ class VerificationReportWidget extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -227,8 +235,8 @@ class VerificationReportWidget extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: issue.isValid
-            ? AppColors.success.withOpacity(0.05)
-            : AppColors.warning.withOpacity(0.05),
+            ? AppColors.success.withValues(alpha: 0.05)
+            : AppColors.warning.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: issue.isValid ? AppColors.success : AppColors.warning,
@@ -279,8 +287,8 @@ class VerificationReportWidget extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: issue.exists
-            ? AppColors.success.withOpacity(0.05)
-            : AppColors.danger.withOpacity(0.05),
+            ? AppColors.success.withValues(alpha: 0.05)
+            : AppColors.danger.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: issue.exists ? AppColors.success : AppColors.danger,
@@ -356,8 +364,8 @@ class VerificationReportWidget extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: issue.isPresent
-            ? AppColors.success.withOpacity(0.05)
-            : AppColors.warning.withOpacity(0.05),
+            ? AppColors.success.withValues(alpha: 0.05)
+            : AppColors.warning.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: issue.isPresent ? AppColors.success : AppColors.warning,
@@ -384,7 +392,8 @@ class VerificationReportWidget extends StatelessWidget {
                 Text(
                   issue.isPresent ? 'Present' : 'Missing',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: issue.isPresent ? AppColors.success : AppColors.warning,
+                    color:
+                        issue.isPresent ? AppColors.success : AppColors.warning,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -408,7 +417,7 @@ class VerificationReportWidget extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.danger.withOpacity(0.05),
+        color: AppColors.danger.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.danger),
       ),
@@ -434,7 +443,9 @@ class VerificationReportWidget extends StatelessWidget {
                 Text(
                   finding.isRedacted ? 'Redacted' : 'Requires Review',
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: finding.isRedacted ? AppColors.success : AppColors.danger,
+                    color: finding.isRedacted
+                        ? AppColors.success
+                        : AppColors.danger,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -471,8 +482,8 @@ class VerificationReportWidget extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: check.isPresent && check.conflicts.isEmpty
-            ? AppColors.success.withOpacity(0.05)
-            : AppColors.warning.withOpacity(0.05),
+            ? AppColors.success.withValues(alpha: 0.05)
+            : AppColors.warning.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: check.isPresent && check.conflicts.isEmpty

@@ -102,7 +102,8 @@ class _LegalUpdatesScreenState extends State<LegalUpdatesScreen> {
                   if (_selectedJurisdiction != 'All')
                     Chip(
                       label: Text(_selectedJurisdiction),
-                      onDeleted: () => setState(() => _selectedJurisdiction = 'All'),
+                      onDeleted: () =>
+                          setState(() => _selectedJurisdiction = 'All'),
                       deleteIcon: const Icon(Icons.close, size: 18),
                     ),
                   if (_selectedType != 'All') ...[
@@ -206,9 +207,10 @@ class _LegalUpdatesScreenState extends State<LegalUpdatesScreen> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: relevanceColor.withOpacity(0.1),
+                    color: relevanceColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(color: relevanceColor),
                   ),
@@ -251,9 +253,10 @@ class _LegalUpdatesScreenState extends State<LegalUpdatesScreen> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppColors.accent.withOpacity(0.05),
+                  color: AppColors.accent.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.accent.withOpacity(0.2)),
+                  border: Border.all(
+                      color: AppColors.accent.withValues(alpha: 0.2)),
                 ),
                 child: Row(
                   children: [
@@ -313,7 +316,8 @@ class _LegalUpdatesScreenState extends State<LegalUpdatesScreen> {
           const SizedBox(width: 4),
           Text(
             label,
-            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            style:
+                const TextStyle(fontSize: 12, color: AppColors.textSecondary),
           ),
         ],
       ),

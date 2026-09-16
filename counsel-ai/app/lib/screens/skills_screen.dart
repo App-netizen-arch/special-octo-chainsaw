@@ -22,13 +22,17 @@ class _SkillsScreenState extends State<SkillsScreen> {
       'name': 'Legal Memo Drafting',
       'description': 'Draft legal memos with proper structure and analysis',
       'trigger': 'memo',
-      'config': {'sections': ['Issue', 'Facts', 'Analysis', 'Conclusion']},
+      'config': {
+        'sections': ['Issue', 'Facts', 'Analysis', 'Conclusion']
+      },
     },
     {
       'name': 'NDA Drafting',
       'description': 'Create non-disclosure agreements with standard clauses',
       'trigger': 'NDA',
-      'config': {'sections': ['Confidentiality', 'Term', 'Exclusions', 'Remedies']},
+      'config': {
+        'sections': ['Confidentiality', 'Term', 'Exclusions', 'Remedies']
+      },
     },
     {
       'name': 'Bluebook Citation',
@@ -46,7 +50,9 @@ class _SkillsScreenState extends State<SkillsScreen> {
       'name': 'Contract Review',
       'description': 'Review contracts for common issues and risks',
       'trigger': 'review',
-      'config': {'focus': ['liability', 'termination', 'indemnification']},
+      'config': {
+        'focus': ['liability', 'termination', 'indemnification']
+      },
     },
   ];
 
@@ -56,13 +62,12 @@ class _SkillsScreenState extends State<SkillsScreen> {
     final appState = context.watch<AppState>();
 
     final allSkills = <Skill>[];
-    
+
     // Add built-in skills
     if (_showBuiltIn) {
       for (final builtin in _builtInSkills) {
-        final existing = appState.skills
-            .where((s) => s.name == builtin['name'])
-            .toList();
+        final existing =
+            appState.skills.where((s) => s.name == builtin['name']).toList();
         if (existing.isNotEmpty) {
           allSkills.add(existing.first);
         } else {
@@ -194,7 +199,9 @@ class _SkillsScreenState extends State<SkillsScreen> {
                     children: [
                       Icon(
                         skill.isBuiltIn ? Icons.star : Icons.build,
-                        color: skill.isBuiltIn ? AppColors.accent : AppColors.warning,
+                        color: skill.isBuiltIn
+                            ? AppColors.accent
+                            : AppColors.warning,
                         size: 20,
                       ),
                       const SizedBox(width: 8),
@@ -211,8 +218,9 @@ class _SkillsScreenState extends State<SkillsScreen> {
                   value: skill.isEnabled,
                   onChanged: skill.isBuiltIn
                       ? null // Built-in skills can't be disabled
-                      : (value) => appState.updateSkill(skill.id, {'is_enabled': value}),
-                  activeColor: AppColors.success,
+                      : (value) =>
+                          appState.updateSkill(skill.id, {'is_enabled': value}),
+                  activeThumbColor: AppColors.success,
                 ),
               ],
             ),
@@ -229,7 +237,8 @@ class _SkillsScreenState extends State<SkillsScreen> {
               runSpacing: 8,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(4),
@@ -238,20 +247,23 @@ class _SkillsScreenState extends State<SkillsScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.play_arrow, size: 12, color: AppColors.textSecondary),
+                      const Icon(Icons.play_arrow,
+                          size: 12, color: AppColors.textSecondary),
                       const SizedBox(width: 4),
                       Text(
                         'Trigger: "${skill.trigger}"',
-                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary),
                       ),
                     ],
                   ),
                 ),
                 if (skill.isBuiltIn)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.accent.withOpacity(0.1),
+                      color: AppColors.accent.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: AppColors.accent),
                     ),
@@ -268,13 +280,15 @@ class _SkillsScreenState extends State<SkillsScreen> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton.icon(
-                    onPressed: () => _showEditSkillDialog(context, appState, skill),
+                    onPressed: () =>
+                        _showEditSkillDialog(context, appState, skill),
                     icon: const Icon(Icons.edit, size: 16),
                     label: const Text('Edit'),
                   ),
                   TextButton.icon(
                     onPressed: () => _confirmDelete(context, appState, skill),
-                    icon: const Icon(Icons.delete, size: 16, color: AppColors.danger),
+                    icon: const Icon(Icons.delete,
+                        size: 16, color: AppColors.danger),
                     label: const Text(
                       'Delete',
                       style: TextStyle(color: AppColors.danger),
@@ -367,7 +381,8 @@ class _SkillsScreenState extends State<SkillsScreen> {
     );
   }
 
-  void _showEditSkillDialog(BuildContext context, AppState appState, Skill skill) {
+  void _showEditSkillDialog(
+      BuildContext context, AppState appState, Skill skill) {
     final nameController = TextEditingController(text: skill.name);
     final descController = TextEditingController(text: skill.description);
     final triggerController = TextEditingController(text: skill.trigger);
@@ -399,7 +414,8 @@ class _SkillsScreenState extends State<SkillsScreen> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: triggerController,
-                  decoration: const InputDecoration(labelText: 'Trigger Keyword'),
+                  decoration:
+                      const InputDecoration(labelText: 'Trigger Keyword'),
                   validator: (v) => v == null || v.isEmpty ? 'Required' : null,
                 ),
               ],
