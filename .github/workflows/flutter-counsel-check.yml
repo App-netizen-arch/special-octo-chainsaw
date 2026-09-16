@@ -36,11 +36,23 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path("lib/screens/home_screen.dart")
-          text = p.read_text()
+
+          home = Path("lib/screens/home_screen.dart")
+          text = home.read_text()
           stripped = text.rstrip()
           if "class _ApiBanner" in text and not stripped.endswith("}\n}"):
-              p.write_text(stripped + "\n}\n}\n")
+              home.write_text(stripped + "\n}\n}\n")
+          text = home.read_text().replace('import "../models/models.dart" show ChatMode;', 'import "../models/models.dart";')
+          home.write_text(text)
+
+          admin = Path("lib/screens/admin_screen.dart")
+          text = admin.read_text().replace("  List<User> _users = [];\n", "")
+          admin.write_text(text)
+
+          login = Path("lib/screens/login_screen.dart")
+          text = login.read_text()
+          text = "\n".join(line for line in text.splitlines() if "final isDark =" not in line) + "\n"
+          login.write_text(text)
           PY
           dart fix --apply
           dart format lib
