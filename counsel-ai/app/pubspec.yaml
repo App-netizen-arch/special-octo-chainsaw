@@ -13,12 +13,12 @@ dependencies:
   http: ^1.2.2
   web_socket_channel: ^3.0.1
   flutter_markdown: ^0.7.7
-  file_picker: ^13.1.0
-  flutter_secure_storage: ^11.1.1
+  file_picker: ^10.2.0
+  flutter_secure_storage: ^9.2.2
   pdf: ^3.11.1
   archive: ^3.6.1
   shared_preferences: ^2.3.2
-  package_info_plus: ^10.2.1
+  package_info_plus: ^8.1.2
   url_launcher: ^6.3.1
   intl: ^0.19.0
 
