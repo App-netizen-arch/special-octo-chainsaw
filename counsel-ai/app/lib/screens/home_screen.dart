@@ -44,7 +44,6 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-
     return Shortcuts(
       shortcuts: <ShortcutActivator, Intent>{
         const SingleActivator(LogicalKeyboardKey.keyK, control: true): const CommandPaletteIntent(),
@@ -54,10 +53,8 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Actions(
         actions: <Type, Action<Intent>>{
           CommandPaletteIntent: CallbackAction<CommandPaletteIntent>(onInvoke: (_) => showCommandPalette(context)),
-          NewChatIntent: CallbackAction<NewChatIntent>(onInvoke: (_) async => context.read<AppState>().newChat()),
-          NewDocIntent: CallbackAction<NewDocIntent>(
-            onInvoke: (_) async => context.read<AppState>().setView(MainView.document),
-          ),
+          NewChatIntent: CallbackAction<NewChatIntent>(onInvoke: (_) => context.read<AppState>().newChat()),
+          NewDocIntent: CallbackAction<NewDocIntent>(onInvoke: (_) => context.read<AppState>().setView(MainView.document)),
         },
         child: Focus(
           autofocus: true,
@@ -136,8 +133,10 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 12),
             Text("Access Denied", style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 6),
-            Text("You don't have permission to view this page.",
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary)),
+            Text(
+              "You don't have permission to view this page.",
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+            ),
           ],
         ),
       );
@@ -153,105 +152,121 @@ class _Sidebar extends StatelessWidget {
     final state = context.watch<AppState>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(color: AppColors.accent, borderRadius: BorderRadius.circular(7)),
-            child: const Icon(Icons.balance, size: 14, color: Colors.white),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(color: AppColors.accent, borderRadius: BorderRadius.circular(7)),
+                child: const Icon(Icons.balance, size: 14, color: Colors.white),
+              ),
+              const SizedBox(width: 9),
+              Text("Counsel AI", style: Theme.of(context).textTheme.titleMedium),
+            ],
           ),
-          const SizedBox(width: 9),
-          Text("Counsel AI", style: Theme.of(context).textTheme.titleMedium),
-        ]),
-        const SizedBox(height: 14),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.tonalIcon(
-            onPressed: () {
-              context.read<AppState>().newChat();
-              onNavigate();
-            },
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text("New chat"),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: AppColors.textPrimary,
-              side: const BorderSide(color: AppColors.border),
-              padding: const EdgeInsets.symmetric(vertical: 12),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonalIcon(
+              onPressed: () {
+                state.newChat();
+                onNavigate();
+              },
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text("New chat"),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: AppColors.textPrimary,
+                side: const BorderSide(color: AppColors.border),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 18),
-        Text("WORKSPACE", style: Theme.of(context).textTheme.labelSmall),
-        const SizedBox(height: 5),
-        _nav(context, Icons.chat_bubble_outline, "Ask", state.view == MainView.chat && state.mode != ChatMode.research, () {
-          state.setMode(ChatMode.local);
-          state.setView(MainView.chat);
-          onNavigate();
-        }),
-        _nav(context, Icons.travel_explore, "Research", state.view == MainView.chat && state.mode == ChatMode.research, () {
-          state.setMode(ChatMode.research);
-          state.setView(MainView.chat);
-          onNavigate();
-        }),
-        _nav(context, Icons.description_outlined, "Documents", state.view == MainView.document, () {
-          state.setView(MainView.document);
-          onNavigate();
-        }),
-        const SizedBox(height: 14),
-        Text("RECENT", style: Theme.of(context).textTheme.labelSmall),
-        const SizedBox(height: 5),
-        Expanded(
-          child: state.conversations.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                  child: Text("Your recent conversations will appear here.",
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary)),
-                )
-              : ListView.builder(
-                  itemCount: state.conversations.length,
-                  itemBuilder: (context, i) {
-                    final c = state.conversations[i];
-                    return _recent(context, c.title, c.id == state.activeConversationId, () async {
-                      await state.openConversation(c.id);
-                      onNavigate();
-                    });
-                  },
-                ),
-        ),
-        const Divider(color: AppColors.border),
-        if (state.isAuthenticated) ...[
-          _nav(context, Icons.auto_awesome_outlined, "Skills", state.view == MainView.skills, () {
-            state.setView(MainView.skills);
+          const SizedBox(height: 18),
+          Text("WORKSPACE", style: Theme.of(context).textTheme.labelSmall),
+          const SizedBox(height: 5),
+          _nav(context, Icons.chat_bubble_outline, "Ask", state.view == MainView.chat && state.mode != ChatMode.research, () {
+            state.setMode(ChatMode.local);
+            state.setView(MainView.chat);
             onNavigate();
           }),
-          _nav(context, Icons.newspaper_outlined, "Legal updates", state.view == MainView.legalUpdates, () {
-            state.setView(MainView.legalUpdates);
+          _nav(context, Icons.travel_explore, "Research", state.view == MainView.chat && state.mode == ChatMode.research, () {
+            state.setMode(ChatMode.research);
+            state.setView(MainView.chat);
             onNavigate();
           }),
-        ],
-        if (state.isAdmin)
-          _nav(context, Icons.admin_panel_settings_outlined, "Admin", state.view == MainView.admin, () {
-            state.setView(MainView.admin);
+          _nav(context, Icons.description_outlined, "Documents", state.view == MainView.document, () {
+            state.setView(MainView.document);
             onNavigate();
           }),
-        _nav(context, Icons.settings_outlined, "Settings", state.view == MainView.settings, () {
-          state.setView(MainView.settings);
-          onNavigate();
-        }),
-        const SizedBox(height: 8),
-        Row(children: [
-          PrivacyDot(mode: state.mode, size: 8),
-          const SizedBox(width: 8),
+          const SizedBox(height: 14),
+          Text("RECENT", style: Theme.of(context).textTheme.labelSmall),
+          const SizedBox(height: 5),
           Expanded(
-            child: Text(privacyLabel(state.mode),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary)),
+            child: state.conversations.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                    child: Text(
+                      "Your recent conversations will appear here.",
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: state.conversations.length,
+                    itemBuilder: (context, i) {
+                      final conversation = state.conversations[i];
+                      return _recent(
+                        context,
+                        conversation.title,
+                        conversation.id == state.activeConversationId,
+                        () async {
+                          await state.openConversation(conversation.id);
+                          onNavigate();
+                        },
+                      );
+                    },
+                  ),
           ),
-        ]),
-      ]),
+          const Divider(color: AppColors.border),
+          if (state.isAuthenticated) ...[
+            _nav(context, Icons.auto_awesome_outlined, "Skills", state.view == MainView.skills, () {
+              state.setView(MainView.skills);
+              onNavigate();
+            }),
+            _nav(context, Icons.newspaper_outlined, "Legal updates", state.view == MainView.legalUpdates, () {
+              state.setView(MainView.legalUpdates);
+              onNavigate();
+            }),
+          ],
+          if (state.isAdmin)
+            _nav(context, Icons.admin_panel_settings_outlined, "Admin", state.view == MainView.admin, () {
+              state.setView(MainView.admin);
+              onNavigate();
+            }),
+          _nav(context, Icons.settings_outlined, "Settings", state.view == MainView.settings, () {
+            state.setView(MainView.settings);
+            onNavigate();
+          }),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              PrivacyDot(mode: state.mode, size: 8),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  privacyLabel(state.mode),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -266,18 +281,22 @@ class _Sidebar extends StatelessWidget {
           borderRadius: BorderRadius.circular(9),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            child: Row(children: [
-              Icon(icon, size: 17, color: selected ? AppColors.accent : AppColors.textSecondary),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(label,
+            child: Row(
+              children: [
+                Icon(icon, size: 17, color: selected ? AppColors.accent : AppColors.textSecondary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    label,
                     style: TextStyle(
                       fontSize: 13.5,
                       fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
                       color: AppColors.textPrimary,
-                    )),
-              ),
-            ]),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -317,22 +336,35 @@ class _TopBar extends StatelessWidget {
         color: AppColors.background,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Row(children: [
-        IconButton(
-          onPressed: onToggleSidebar,
-          icon: Icon(compact || !sidebarOpen ? Icons.menu : Icons.menu_open, size: 20),
-          tooltip: compact || !sidebarOpen ? "Open navigation" : "Collapse navigation",
-        ),
-        if (compact || !sidebarOpen) ...[
-          Text("Counsel AI", style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(width: 14),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onToggleSidebar,
+            icon: Icon(compact || !sidebarOpen ? Icons.menu : Icons.menu_open, size: 20),
+            tooltip: compact || !sidebarOpen ? "Open navigation" : "Collapse navigation",
+          ),
+          if (compact || !sidebarOpen) ...[
+            Text("Counsel AI", style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(width: 10),
+          ],
+          if (compact)
+            PopupMenuButton<ChatMode>(
+              tooltip: "Change mode",
+              onSelected: state.setMode,
+              itemBuilder: (context) => [
+                for (final mode in ChatMode.values)
+                  PopupMenuItem(value: mode, child: Text(mode.label)),
+              ],
+              child: Chip(label: Text(state.mode.label)),
+            )
+          else
+            Flexible(child: ModeSelector(current: state.mode, onChanged: state.setMode)),
+          const Spacer(),
+          if (!compact) ConnectionBadge(status: state.backendStatus),
+          if (!compact) const SizedBox(width: 8),
+          PrivacyChip(mode: state.mode),
         ],
-        Flexible(child: ModeSelector(current: state.mode, onChanged: state.setMode)),
-        const Spacer(),
-        if (!compact) ConnectionBadge(status: state.backendStatus),
-        if (!compact) const SizedBox(width: 8),
-        PrivacyChip(mode: state.mode),
-      ]),
+      ),
     );
   }
 }
@@ -341,11 +373,13 @@ class _ApiBanner extends StatelessWidget {
   const _ApiBanner();
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        color: const Color(0xFFFEF3C7),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-        child: Row(children: [
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFFFEF3C7),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      child: Row(
+        children: [
           const Icon(Icons.cloud_upload_outlined, size: 15, color: Color(0xFFB45309)),
           const SizedBox(width: 8),
           Expanded(
@@ -354,5 +388,8 @@ class _ApiBanner extends StatelessWidget {
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFFB45309)),
             ),
           ),
-        ]),
-      );
+        ],
+      ),
+    );
+  }
+}
