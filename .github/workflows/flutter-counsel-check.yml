@@ -55,7 +55,14 @@ jobs:
           login.write_text(text)
           PY
           dart fix --apply
-          dart format lib
+          dart format \
+            lib/screens/home_screen.dart \
+            lib/screens/admin_screen.dart \
+            lib/screens/login_screen.dart \
+            lib/screens/legal_updates_screen.dart \
+            lib/screens/settings_screen.dart \
+            lib/screens/skills_screen.dart \
+            lib/widgets/verification_report_widget.dart
 
       - name: Analyze
         run: flutter analyze
