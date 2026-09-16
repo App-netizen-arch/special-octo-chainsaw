@@ -109,10 +109,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             label: Text(savingServer ? "Reconnecting…" : "Save & reconnect"),
                           ),
                           const SizedBox(width: 12),
-                          _StatusPill(
-                            connected: connected,
-                            label: connected ? "Connected" : "Offline",
-                          ),
+                          _StatusPill(connected: connected, label: connected ? "Connected" : "Offline"),
                         ],
                       ),
                     ],
@@ -160,29 +157,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       : "Sign in to enable account integrations.",
                   child: Column(
                     children: [
-                      _IntegrationRow(
-                        label: "Gmail",
-                        provider: "gmail",
-                        icon: Icons.mail_outline,
-                        state: state,
-                        enabled: state.isAuthenticated,
-                      ),
+                      _IntegrationRow(label: "Gmail", provider: "gmail", icon: Icons.mail_outline, state: state, enabled: state.isAuthenticated),
                       const Divider(height: 1),
-                      _IntegrationRow(
-                        label: "Outlook",
-                        provider: "outlook",
-                        icon: Icons.mark_email_unread_outlined,
-                        state: state,
-                        enabled: state.isAuthenticated,
-                      ),
+                      _IntegrationRow(label: "Outlook", provider: "outlook", icon: Icons.mark_email_unread_outlined, state: state, enabled: state.isAuthenticated),
                       const Divider(height: 1),
-                      _IntegrationRow(
-                        label: "Google Calendar",
-                        provider: "google_calendar",
-                        icon: Icons.calendar_month_outlined,
-                        state: state,
-                        enabled: state.isAuthenticated,
-                      ),
+                      _IntegrationRow(label: "Google Calendar", provider: "google_calendar", icon: Icons.calendar_month_outlined, state: state, enabled: state.isAuthenticated),
                     ],
                   ),
                 ),
@@ -195,25 +174,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ? FutureBuilder<Map<String, dynamic>>(
                           future: state.api.health(),
                           builder: (context, snapshot) {
-                            if (!snapshot.hasData) {
-                              return const _InfoRow(icon: Icons.sync, text: "Checking local model…");
-                            }
+                            if (!snapshot.hasData) return const _InfoRow(icon: Icons.sync, text: "Checking local model…");
                             final services = snapshot.data?["services"];
                             final local = services is Map ? services["local_llm"] : null;
                             final available = local is Map && local["available"] == true;
                             return _InfoRow(
                               icon: available ? Icons.check_circle_outline : Icons.info_outline,
                               color: available ? AppColors.success : AppColors.warning,
-                              text: available
-                                  ? "Local model is available."
-                                  : "No local model is available. Configure LOCAL_MODEL_PATH in the backend.",
+                              text: available ? "Local model is available." : "No local model is available. Configure LOCAL_MODEL_PATH in the backend.",
                             );
                           },
                         )
-                      : const _InfoRow(
-                          icon: Icons.cloud_off_outlined,
-                          text: "Connect to the backend to check local model status.",
-                        ),
+                      : const _InfoRow(icon: Icons.cloud_off_outlined, text: "Connect to the backend to check local model status."),
                 ),
                 const SizedBox(height: 16),
                 _Section(
@@ -223,8 +195,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       _ActionRow(
                         icon: Icons.description_outlined,
-                        title: "Licenses",
-                        subtitle: "Open-source notices and attributions",
+                        title: "Repository",
+                        subtitle: "Open-source project and documentation",
                         onTap: () => _openExternal("https://github.com/App-netizen-arch/special-octo-chainsaw"),
                       ),
                       const Divider(height: 1),
@@ -259,7 +231,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 class _Section extends StatelessWidget {
   const _Section({required this.title, required this.icon, this.subtitle, required this.child});
-
   final String title;
   final IconData icon;
   final String? subtitle;
@@ -276,29 +247,24 @@ class _Section extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: Icon(icon, size: 18, color: AppColors.textSecondary),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(title, style: Theme.of(context).textTheme.titleMedium),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 3),
-                    Text(subtitle!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary)),
-                  ],
-                ]),
-              ),
-            ],
-          ),
+          Row(children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(9)),
+              child: Icon(icon, size: 18, color: AppColors.textSecondary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, style: Theme.of(context).textTheme.titleMedium),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 3),
+                  Text(subtitle!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary)),
+                ],
+              ]),
+            ),
+          ]),
           const SizedBox(height: 18),
           child,
         ]),
@@ -317,10 +283,7 @@ class _StatusPill extends StatelessWidget {
     final color = connected ? AppColors.success : AppColors.warning;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(999),
-      ),
+      decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(999)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         Icon(Icons.circle, size: 8, color: color),
         const SizedBox(width: 7),
@@ -337,14 +300,11 @@ class _InfoRow extends StatelessWidget {
   final Color? color;
 
   @override
-  Widget build(BuildContext context) => Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: color ?? AppColors.textSecondary),
-          const SizedBox(width: 10),
-          Expanded(child: Text(text, style: Theme.of(context).textTheme.bodyMedium)),
-        ],
-      );
+  Widget build(BuildContext context) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, size: 18, color: color ?? AppColors.textSecondary),
+        const SizedBox(width: 10),
+        Expanded(child: Text(text, style: Theme.of(context).textTheme.bodyMedium)),
+      ]);
 }
 
 class _ActionRow extends StatelessWidget {
@@ -366,14 +326,7 @@ class _ActionRow extends StatelessWidget {
 }
 
 class _IntegrationRow extends StatelessWidget {
-  const _IntegrationRow({
-    required this.label,
-    required this.provider,
-    required this.icon,
-    required this.state,
-    required this.enabled,
-  });
-
+  const _IntegrationRow({required this.label, required this.provider, required this.icon, required this.state, required this.enabled});
   final String label;
   final String provider;
   final IconData icon;
@@ -396,35 +349,23 @@ class _IntegrationRow extends StatelessWidget {
       leading: Icon(icon, size: 20, color: isConnected ? AppColors.success : AppColors.textSecondary),
       title: Text(label),
       subtitle: Text(
-        isConnected
-            ? (connection?.userEmail?.isNotEmpty == true ? connection!.userEmail! : "Connected")
-            : enabled
-                ? "Not connected"
-                : "Sign in to connect",
+        isConnected ? (connection?.userEmail?.isNotEmpty == true ? connection!.userEmail! : "Connected") : enabled ? "Not connected" : "Sign in to connect",
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
       trailing: isConnected
-          ? OutlinedButton(
-              onPressed: () async {
-                try {
-                  await state.disconnectTool(provider);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label disconnected.")));
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Could not disconnect: $e")));
-                  }
-                }
-              },
-              child: const Text("Disconnect"),
-            )
-          : FilledButton.tonal(
-              onPressed: enabled ? () => _connect(context) : null,
-              child: const Text("Connect"),
-            ),
+          ? OutlinedButton(onPressed: () => _disconnect(context), child: const Text("Disconnect"))
+          : FilledButton.tonal(onPressed: enabled ? () => _connect(context) : null, child: const Text("Connect")),
     );
+  }
+
+  Future<void> _disconnect(BuildContext context) async {
+    try {
+      await state.disconnectTool(provider);
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label disconnected.")));
+    } catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Could not disconnect: $e")));
+    }
   }
 
   Future<void> _connect(BuildContext context) async {
@@ -432,22 +373,14 @@ class _IntegrationRow extends StatelessWidget {
       final authUrl = await state.initiateToolConnection(provider);
       final opened = await launchUrl(Uri.parse(authUrl), mode: LaunchMode.externalApplication);
       if (!opened) throw Exception("The authorization page could not be opened.");
-
       if (!context.mounted) return;
-      final code = await showDialog<String>(
-        context: context,
-        builder: (dialogContext) => _CodeDialog(provider: label),
-      );
-      if (code == null || code.trim().isEmpty || !context.mounted) return;
 
+      final code = await showDialog<String>(context: context, builder: (_) => _CodeDialog(provider: label));
+      if (code == null || code.trim().isEmpty || !context.mounted) return;
       await state.completeToolConnection(provider, code.trim());
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label connected.")));
-      }
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label connected.")));
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Connection failed: $e")));
-      }
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Connection failed: $e")));
     }
   }
 }
@@ -475,10 +408,7 @@ class _CodeDialogState extends State<_CodeDialog> {
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            labelText: "Authorization code",
-            hintText: "Paste the code returned by the provider",
-          ),
+          decoration: const InputDecoration(labelText: "Authorization code", hintText: "Paste the code returned by the provider"),
           onSubmitted: (value) => Navigator.pop(context, value),
         ),
         actions: [
