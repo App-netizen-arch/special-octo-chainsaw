@@ -16,7 +16,6 @@ import "research_screen.dart";
 import "settings_screen.dart";
 import "skills_screen.dart";
 
-/// Widescreen desktop shell: collapsible 260px sidebar + main area.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -33,7 +32,6 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final state = context.read<AppState>();
       if (state.backendStatus == ConnectionStatus.unknown) state.checkHealth();
-      // Load data based on auth status
       if (state.isAuthenticated) {
         state.loadSkills();
         state.loadLegalUpdates();
@@ -55,31 +53,56 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
-          CommandPaletteIntent: CallbackAction<CommandPaletteIntent>(
-              onInvoke: (_) => showCommandPalette(context)),
+          CommandPaletteIntent: CallbackAction<CommandPaletteIntent>(onInvoke: (_) => showCommandPalette(context)),
           NewChatIntent: CallbackAction<NewChatIntent>(onInvoke: (_) async => context.read<AppState>().newChat()),
           NewDocIntent: CallbackAction<NewDocIntent>(
-              onInvoke: (_) async => context.read<AppState>().setView(MainView.document)),
+            onInvoke: (_) async => context.read<AppState>().setView(MainView.document),
+          ),
         },
         child: Focus(
           autofocus: true,
-          child: Scaffold(
-            backgroundColor: AppColors.background,
-            body: Row(
-              children: [
-                if (sidebarOpen) _Sidebar(width: 260, onToggle: () => setState(() {})),
-                Expanded(
-                  child: Column(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 820;
+              if (compact) {
+                return Scaffold(
+                  backgroundColor: AppColors.background,
+                  drawer: Drawer(
+                    backgroundColor: AppColors.surface,
+                    child: SafeArea(child: _Sidebar(onNavigate: () => Navigator.of(context).pop())),
+                  ),
+                  body: Column(
                     children: [
-                      _TopBar(sidebarOpen: sidebarOpen, onToggleSidebar: () => setState(() => sidebarOpen = !sidebarOpen)),
-                      if (state.mode == ChatMode.api)
-                        _ApiBanner(),
+                      _TopBar(compact: true, sidebarOpen: false, onToggleSidebar: () => Scaffold.of(context).openDrawer()),
+                      if (state.mode == ChatMode.api) const _ApiBanner(),
                       Expanded(child: _mainArea(state)),
                     ],
                   ),
+                );
+              }
+
+              return Scaffold(
+                backgroundColor: AppColors.background,
+                body: Row(
+                  children: [
+                    if (sidebarOpen) _Sidebar(onNavigate: () {}),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          _TopBar(
+                            compact: false,
+                            sidebarOpen: sidebarOpen,
+                            onToggleSidebar: () => setState(() => sidebarOpen = !sidebarOpen),
+                          ),
+                          if (state.mode == ChatMode.api) const _ApiBanner(),
+                          Expanded(child: _mainArea(state)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),
@@ -99,121 +122,161 @@ class _HomeScreenState extends State<HomeScreen> {
       case MainView.skills:
         return const SkillsScreen();
       case MainView.research:
-        return ResearchScreen();
-      default:
+        return const ResearchScreen();
+      case MainView.chat:
         return const ChatScreen();
     }
   }
 
-  Widget _accessDenied() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.lock_outline, size: 48, color: AppColors.textSecondary),
-          const SizedBox(height: 16),
-          Text("Access Denied", style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          Text("You don't have permission to view this page.", 
-               style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary)),
-        ],
-      ),
-    );
-  }
+  Widget _accessDenied() => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.lock_outline, size: 44, color: AppColors.textSecondary),
+            const SizedBox(height: 12),
+            Text("Access Denied", style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 6),
+            Text("You don't have permission to view this page.",
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary)),
+          ],
+        ),
+      );
 }
 
-// ------------------------------------------------------------------- sidebar
-
 class _Sidebar extends StatelessWidget {
-  const _Sidebar({required this.width, required this.onToggle});
+  const _Sidebar({required this.onNavigate});
 
-  final double width;
-  final VoidCallback onToggle;
+  final VoidCallback onNavigate;
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    return Container(
-      width: width,
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(right: BorderSide(color: AppColors.border)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          Container(width: 22, height: 22, decoration: BoxDecoration(color: AppColors.accent, borderRadius: BorderRadius.circular(6))),
-          const SizedBox(width: 8),
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(color: AppColors.accent, borderRadius: BorderRadius.circular(7)),
+            child: const Icon(Icons.balance, size: 14, color: Colors.white),
+          ),
+          const SizedBox(width: 9),
           Text("Counsel AI", style: Theme.of(context).textTheme.titleMedium),
-          const Spacer(),
-          IconButton(onPressed: onToggle, icon: const Icon(Icons.menu_open, size: 18), tooltip: "Collapse"),
         ]),
-        const SizedBox(height: 10),
+        const SizedBox(height: 14),
         SizedBox(
           width: double.infinity,
           child: FilledButton.tonalIcon(
-            onPressed: () => context.read<AppState>().newChat(),
+            onPressed: () {
+              context.read<AppState>().newChat();
+              onNavigate();
+            },
             icon: const Icon(Icons.add, size: 18),
-            label: const Text("New"),
+            label: const Text("New chat"),
             style: FilledButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor: AppColors.textPrimary,
               side: const BorderSide(color: AppColors.border),
+              padding: const EdgeInsets.symmetric(vertical: 12),
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
         Text("WORKSPACE", style: Theme.of(context).textTheme.labelSmall),
-        const SizedBox(height: 4),
-        _navItem(context, icon: Icons.chat_bubble_outline, label: "Ask", selected: state.view == MainView.chat, onTap: () => context.read<AppState>().setView(MainView.chat)),
-        _navItem(context, icon: Icons.travel_explore, label: "Research", selected: state.view == MainView.chat && state.mode == ChatMode.research, onTap: () { final s = context.read<AppState>(); s.setMode(ChatMode.research); s.setView(MainView.chat); }),
-        _navItem(context, icon: Icons.description_outlined, label: "Documents", selected: state.view == MainView.document, onTap: () => context.read<AppState>().setView(MainView.document)),
-        const SizedBox(height: 16),
+        const SizedBox(height: 5),
+        _nav(context, Icons.chat_bubble_outline, "Ask", state.view == MainView.chat && state.mode != ChatMode.research, () {
+          state.setMode(ChatMode.local);
+          state.setView(MainView.chat);
+          onNavigate();
+        }),
+        _nav(context, Icons.travel_explore, "Research", state.view == MainView.chat && state.mode == ChatMode.research, () {
+          state.setMode(ChatMode.research);
+          state.setView(MainView.chat);
+          onNavigate();
+        }),
+        _nav(context, Icons.description_outlined, "Documents", state.view == MainView.document, () {
+          state.setView(MainView.document);
+          onNavigate();
+        }),
+        const SizedBox(height: 14),
         Text("RECENT", style: Theme.of(context).textTheme.labelSmall),
-        const SizedBox(height: 4),
+        const SizedBox(height: 5),
         Expanded(
-          child: ListView.builder(
-            itemCount: state.conversations.length,
-            itemBuilder: (context, i) {
-              final c = state.conversations[i];
-              return _recentTile(context, c.title, c.id == state.activeConversationId, () => context.read<AppState>().openConversation(c.id));
-            },
-          ),
+          child: state.conversations.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                  child: Text("Your recent conversations will appear here.",
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary)),
+                )
+              : ListView.builder(
+                  itemCount: state.conversations.length,
+                  itemBuilder: (context, i) {
+                    final c = state.conversations[i];
+                    return _recent(context, c.title, c.id == state.activeConversationId, () async {
+                      await state.openConversation(c.id);
+                      onNavigate();
+                    });
+                  },
+                ),
         ),
         const Divider(color: AppColors.border),
         if (state.isAuthenticated) ...[
-          _navItem(context, icon: Icons.auto_awesome_outlined, label: "Skills", selected: state.view == MainView.skills, onTap: () => context.read<AppState>().setView(MainView.skills)),
-          _navItem(context, icon: Icons.newspaper_outlined, label: "Legal Updates", selected: state.view == MainView.legalUpdates, onTap: () => context.read<AppState>().setView(MainView.legalUpdates)),
+          _nav(context, Icons.auto_awesome_outlined, "Skills", state.view == MainView.skills, () {
+            state.setView(MainView.skills);
+            onNavigate();
+          }),
+          _nav(context, Icons.newspaper_outlined, "Legal updates", state.view == MainView.legalUpdates, () {
+            state.setView(MainView.legalUpdates);
+            onNavigate();
+          }),
         ],
         if (state.isAdmin)
-          _navItem(context, icon: Icons.admin_panel_settings_outlined, label: "Admin", selected: state.view == MainView.admin, onTap: () => context.read<AppState>().setView(MainView.admin)),
-        _navItem(context, icon: Icons.settings_outlined, label: "Settings", selected: state.view == MainView.settings, onTap: () => context.read<AppState>().setView(MainView.settings)),
-        const SizedBox(height: 6),
+          _nav(context, Icons.admin_panel_settings_outlined, "Admin", state.view == MainView.admin, () {
+            state.setView(MainView.admin);
+            onNavigate();
+          }),
+        _nav(context, Icons.settings_outlined, "Settings", state.view == MainView.settings, () {
+          state.setView(MainView.settings);
+          onNavigate();
+        }),
+        const SizedBox(height: 8),
         Row(children: [
           PrivacyDot(mode: state.mode, size: 8),
           const SizedBox(width: 8),
-          Text(privacyLabel(state.mode), style: Theme.of(context).textTheme.bodySmall!.copyWith(color: AppColors.textSecondary)),
+          Expanded(
+            child: Text(privacyLabel(state.mode),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary)),
+          ),
         ]),
       ]),
     );
   }
 
-  Widget _navItem(BuildContext context,
-      {required IconData icon, required String label, required bool selected, required VoidCallback onTap}) {
+  Widget _nav(BuildContext context, IconData icon, String label, bool selected, VoidCallback onTap) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Material(
         color: selected ? Colors.white : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(9),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          borderRadius: BorderRadius.circular(9),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             child: Row(children: [
               Icon(icon, size: 17, color: selected ? AppColors.accent : AppColors.textSecondary),
               const SizedBox(width: 10),
-              Text(label, style: TextStyle(fontSize: 13.5, fontWeight: selected ? FontWeight.w600 : FontWeight.w400, color: AppColors.textPrimary)),
+              Expanded(
+                child: Text(label,
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                      color: AppColors.textPrimary,
+                    )),
+              ),
             ]),
           ),
         ),
@@ -221,24 +284,26 @@ class _Sidebar extends StatelessWidget {
     );
   }
 
-  Widget _recentTile(BuildContext context, String title, bool selected, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Material(
-        color: selected ? Colors.white : Colors.transparent,
+  Widget _recent(BuildContext context, String title, bool selected, VoidCallback onTap) {
+    return Material(
+      color: selected ? Colors.white : Colors.transparent,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(8),
-        child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(8),
-          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)))),
-      ));
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+        ),
+      ),
+    );
   }
 }
 
-// -------------------------------------------------------------------- topbar
-
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.sidebarOpen, required this.onToggleSidebar});
+  const _TopBar({required this.compact, required this.sidebarOpen, required this.onToggleSidebar});
 
+  final bool compact;
   final bool sidebarOpen;
   final VoidCallback onToggleSidebar;
 
@@ -251,18 +316,21 @@ class _TopBar extends StatelessWidget {
         border: Border(bottom: BorderSide(color: AppColors.border)),
         color: AppColors.background,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       child: Row(children: [
-        if (!sidebarOpen)
-          IconButton(onPressed: onToggleSidebar, icon: const Icon(Icons.menu, size: 20), tooltip: "Show sidebar"),
-        if (!sidebarOpen) ...[
+        IconButton(
+          onPressed: onToggleSidebar,
+          icon: Icon(compact || !sidebarOpen ? Icons.menu : Icons.menu_open, size: 20),
+          tooltip: compact || !sidebarOpen ? "Open navigation" : "Collapse navigation",
+        ),
+        if (compact || !sidebarOpen) ...[
           Text("Counsel AI", style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
         ],
-        ModeSelector(current: state.mode, onChanged: (m) => context.read<AppState>().setMode(m)),
+        Flexible(child: ModeSelector(current: state.mode, onChanged: state.setMode)),
         const Spacer(),
-        ConnectionBadge(status: state.backendStatus),
-        const SizedBox(width: 10),
+        if (!compact) ConnectionBadge(status: state.backendStatus),
+        if (!compact) const SizedBox(width: 8),
         PrivacyChip(mode: state.mode),
       ]),
     );
@@ -270,16 +338,21 @@ class _TopBar extends StatelessWidget {
 }
 
 class _ApiBanner extends StatelessWidget {
+  const _ApiBanner();
+
   @override
   Widget build(BuildContext context) => Container(
         width: double.infinity,
         color: const Color(0xFFFEF3C7),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         child: Row(children: [
           const Icon(Icons.cloud_upload_outlined, size: 15, color: Color(0xFFB45309)),
           const SizedBox(width: 8),
-          Text("API mode: this conversation may be processed by an external provider. Avoid privileged client data.",
-              style: Theme.of(context).textTheme.bodySmall!.copyWith(color: const Color(0xFFB45309))),
+          Expanded(
+            child: Text(
+              "API mode: responses may be processed by an external provider. Avoid privileged client data.",
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFFB45309)),
+            ),
+          ),
         ]),
       );
-}
