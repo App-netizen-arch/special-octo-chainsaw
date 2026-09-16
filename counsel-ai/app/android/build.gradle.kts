@@ -21,12 +21,14 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(":app")
 
-    // Some Android library plugins still declare compileSdk 34 while their
-    // dependencies now require API 36. Align every library module with the
-    // application compile SDK without changing runtime min/target SDKs.
+    // Some Flutter Android library plugins set compileSdk=34 in their own
+    // Gradle script. Apply the final compile SDK after those scripts have
+    // finished so dependencies requiring API 36 can be resolved correctly.
     plugins.withId("com.android.library") {
-        extensions.configure<LibraryExtension> {
-            compileSdk = 36
+        afterEvaluate {
+            extensions.configure<LibraryExtension> {
+                compileSdk = 36
+            }
         }
     }
 }
