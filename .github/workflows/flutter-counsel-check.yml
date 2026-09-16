@@ -39,9 +39,7 @@ jobs:
           p = Path("lib/screens/home_screen.dart")
           text = p.read_text()
           stripped = text.rstrip()
-          if stripped.endswith(" );"):
-              raise SystemExit("unexpected source ending")
-          if stripped.endswith("  );") and "class _ApiBanner" in text and not stripped.endswith("  );\n}\n}"):
+          if "class _ApiBanner" in text and not stripped.endswith("}\n}"):
               p.write_text(stripped + "\n}\n}\n")
           PY
           dart fix --apply
