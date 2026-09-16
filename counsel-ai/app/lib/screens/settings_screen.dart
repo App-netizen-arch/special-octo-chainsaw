@@ -1,8 +1,8 @@
 import "package:flutter/material.dart";
-import "package:flutter/services.dart";
 import "package:provider/provider.dart";
 import "package:url_launcher/url_launcher.dart";
 
+import "../models/models.dart";
 import "../state/app_state.dart";
 import "../theme.dart";
 
@@ -14,26 +14,11 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late TextEditingController baseUrlCtrl;
-  late TextEditingController tokenCtrl;
-  late TextEditingController apiKeyCtrl;
+  late final TextEditingController baseUrlCtrl;
+  late final TextEditingController tokenCtrl;
+  late final TextEditingController apiKeyCtrl;
   bool obscureKey = true;
-  
-  // Model settings
-  String selectedModelId = "";
-  int contextLength = 4096;
-  double temperature = 0.7;
-  
-  // Privacy settings
-  bool dataRetentionEnabled = true;
-  bool showEncryptionStatus = true;
-  
-  // Appearance settings
-  ThemeMode appTheme = ThemeMode.system;
-  double fontSize = 14.0;
-  
-  // Auto-update
-  bool autoUpdateEnabled = true;
+  bool savingServer = false;
 
   @override
   void initState() {
@@ -55,384 +40,450 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final health = state.backendStatus == ConnectionStatus.connected;
-    
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
-        child: ListView(
-          padding: const EdgeInsets.all(36),
-          children: [
-            Text("Settings", style: Theme.of(context).textTheme.headlineMedium),
-            const SizedBox(height: 24),
+    final connected = state.backendStatus == ConnectionStatus.connected;
 
-            // ---------------------------------------------------- backend
-            _sectionTitle(context, "Backend connection"),
-            TextField(controller: baseUrlCtrl, decoration: const InputDecoration(labelText: "Server URL")),
-            const SizedBox(height: 12),
-            TextField(controller: tokenCtrl, decoration: const InputDecoration(labelText: "Local auth token")),
-            const SizedBox(height: 12),
-            Row(children: [
-              FilledButton(
-                onPressed: () async {
-                  await state.saveServerConfig(baseUrlCtrl.text.trim(), tokenCtrl.text.trim());
-                  if (mounted) setState(() {});
-                },
-                child: const Text("Save & reconnect"),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(28, 28, 28, 48),
+      children: [
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 820),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Settings", style: Theme.of(context).textTheme.headlineMedium),
+                const SizedBox(height: 6),
+                Text(
+                  "Connection, privacy, and integrations. Only settings backed by the app are shown here.",
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 28),
+                _Section(
+                  title: "Backend",
+                  icon: Icons.dns_outlined,
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: baseUrlCtrl,
+                        keyboardType: TextInputType.url,
+                        decoration: const InputDecoration(
+                          labelText: "Server URL",
+                          hintText: "http://127.0.0.1:8000",
+                          prefixIcon: Icon(Icons.link, size: 18),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: tokenCtrl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: "Server token",
+                          prefixIcon: Icon(Icons.key_outlined, size: 18),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          FilledButton.icon(
+                            onPressed: savingServer
+                                ? null
+                                : () async {
+                                    final url = baseUrlCtrl.text.trim();
+                                    if (url.isEmpty) {
+                                      _snack("Enter a server URL first.");
+                                      return;
+                                    }
+                                    setState(() => savingServer = true);
+                                    try {
+                                      await state.saveServerConfig(url, tokenCtrl.text.trim());
+                                      if (mounted) _snack("Saved. Backend status refreshed.");
+                                    } catch (e) {
+                                      if (mounted) _snack("Could not connect: $e");
+                                    } finally {
+                                      if (mounted) setState(() => savingServer = false);
+                                    }
+                                  },
+                            icon: savingServer
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.refresh, size: 17),
+                            label: Text(savingServer ? "Reconnecting…" : "Save & reconnect"),
+                          ),
+                          const SizedBox(width: 12),
+                          _StatusPill(
+                            connected: connected,
+                            label: connected ? "Connected" : "Offline",
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _Section(
+                  title: "Provider API key",
+                  icon: Icons.cloud_outlined,
+                  subtitle: "Used only for API mode. The key is stored with OS secure storage.",
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: apiKeyCtrl,
+                          obscureText: obscureKey,
+                          decoration: const InputDecoration(
+                            labelText: "OpenAI-compatible API key",
+                            prefixIcon: Icon(Icons.vpn_key_outlined, size: 18),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: obscureKey ? "Show key" : "Hide key",
+                        onPressed: () => setState(() => obscureKey = !obscureKey),
+                        icon: Icon(obscureKey ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                      ),
+                      FilledButton.tonal(
+                        onPressed: () async {
+                          await state.saveApiKey(apiKeyCtrl.text.trim());
+                          if (mounted) _snack("API key saved securely.");
+                        },
+                        child: const Text("Save"),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _Section(
+                  title: "Integrations",
+                  icon: Icons.extension_outlined,
+                  subtitle: state.isAuthenticated
+                      ? "Connect accounts through the configured backend."
+                      : "Sign in to enable account integrations.",
+                  child: Column(
+                    children: [
+                      _IntegrationRow(
+                        label: "Gmail",
+                        provider: "gmail",
+                        icon: Icons.mail_outline,
+                        state: state,
+                        enabled: state.isAuthenticated,
+                      ),
+                      const Divider(height: 1),
+                      _IntegrationRow(
+                        label: "Outlook",
+                        provider: "outlook",
+                        icon: Icons.mark_email_unread_outlined,
+                        state: state,
+                        enabled: state.isAuthenticated,
+                      ),
+                      const Divider(height: 1),
+                      _IntegrationRow(
+                        label: "Google Calendar",
+                        provider: "google_calendar",
+                        icon: Icons.calendar_month_outlined,
+                        state: state,
+                        enabled: state.isAuthenticated,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _Section(
+                  title: "Local model",
+                  icon: Icons.memory_outlined,
+                  subtitle: "Availability is reported by the backend rather than simulated in the UI.",
+                  child: connected
+                      ? FutureBuilder<Map<String, dynamic>>(
+                          future: state.api.health(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return const _InfoRow(icon: Icons.sync, text: "Checking local model…");
+                            }
+                            final services = snapshot.data?["services"];
+                            final local = services is Map ? services["local_llm"] : null;
+                            final available = local is Map && local["available"] == true;
+                            return _InfoRow(
+                              icon: available ? Icons.check_circle_outline : Icons.info_outline,
+                              color: available ? AppColors.success : AppColors.warning,
+                              text: available
+                                  ? "Local model is available."
+                                  : "No local model is available. Configure LOCAL_MODEL_PATH in the backend.",
+                            );
+                          },
+                        )
+                      : const _InfoRow(
+                          icon: Icons.cloud_off_outlined,
+                          text: "Connect to the backend to check local model status.",
+                        ),
+                ),
+                const SizedBox(height: 16),
+                _Section(
+                  title: "About",
+                  icon: Icons.info_outline,
+                  child: Column(
+                    children: [
+                      _ActionRow(
+                        icon: Icons.description_outlined,
+                        title: "Licenses",
+                        subtitle: "Open-source notices and attributions",
+                        onTap: () => _openExternal("https://github.com/App-netizen-arch/special-octo-chainsaw"),
+                      ),
+                      const Divider(height: 1),
+                      _ActionRow(
+                        icon: Icons.bug_report_outlined,
+                        title: "Report an issue",
+                        subtitle: "Open the repository issue tracker",
+                        onTap: () => _openExternal("https://github.com/App-netizen-arch/special-octo-chainsaw/issues"),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _snack(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openExternal(String url) async {
+    final ok = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (!ok && mounted) _snack("Could not open the link.");
+  }
+}
+
+class _Section extends StatelessWidget {
+  const _Section({required this.title, required this.icon, this.subtitle, required this.child});
+
+  final String title;
+  final IconData icon;
+  final String? subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(icon, size: 18, color: AppColors.textSecondary),
               ),
               const SizedBox(width: 12),
-              Icon(health ? Icons.check_circle : Icons.error_outline,
-                  size: 17, color: health ? AppColors.success : AppColors.danger),
-              const SizedBox(width: 6),
-              Text(health ? "Connected" : "Backend unreachable",
-                  style: TextStyle(fontSize: 13, color: health ? AppColors.success : AppColors.danger)),
-            ]),
-            const SizedBox(height: 32),
-
-            // --------------------------------------------------- api key
-            _sectionTitle(context, "Provider API key (API mode)"),
-            Text("Stored in this machine's OS keychain. Sent to your backend per request; never written to disk.",
-                style: Theme.of(context).textTheme.bodySmall!.copyWith(color: AppColors.textSecondary)),
-            const SizedBox(height: 10),
-            Row(children: [
               Expanded(
-                child: TextField(
-                  controller: apiKeyCtrl,
-                  obscureText: obscureKey,
-                  decoration: const InputDecoration(labelText: "DeepSeek / OpenAI-compatible key"),
-                ),
-              ),
-              IconButton(onPressed: () => setState(() => obscureKey = !obscureKey), icon: const Icon(Icons.visibility_outlined, size: 18)),
-              FilledButton.tonal(onPressed: () => state.saveApiKey(apiKeyCtrl.text.trim()), child: const Text("Save key")),
-            ]),
-            const SizedBox(height: 32),
-
-            // ------------------------------------------------- local model
-            _sectionTitle(context, "Local model"),
-            Text("Local mode runs a GGUF file on this machine via llama.cpp. Set LOCAL_MODEL_PATH in the backend .env and restart it; the status below refreshes automatically.",
-                style: Theme.of(context).textTheme.bodySmall!.copyWith(color: AppColors.textSecondary)),
-            const SizedBox(height: 8),
-            FutureBuilder<dynamic>(
-              future: health ? state.api.health() : null,
-              builder: (context, snap) {
-                if (!health) return const Text("Backend offline.", style: TextStyle(color: AppColors.textSecondary));
-                if (!snap.hasData) return const Text("Checking…", style: TextStyle(color: AppColors.textSecondary));
-                final local = snap.data!["services"]["local_llm"] as Map<String, dynamic>? ?? {};
-                final ok = local["available"] == true;
-                return Row(children: [
-                  Icon(ok ? Icons.check_circle : Icons.info_outline, size: 16, color: ok ? AppColors.success : AppColors.warning),
-                  const SizedBox(width: 6),
-                  Text(ok ? "Local model ready" : "No GGUF model found — set LOCAL_MODEL_PATH",
-                      style: TextStyle(fontSize: 13)),
-                ]);
-              },
-            ),
-            const SizedBox(height: 32),
-
-            // ------------------------------------------------- Model Settings
-            _sectionTitle(context, "Model Settings"),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    DropdownButtonFormField<String>(
-                      value: selectedModelId.isEmpty ? null : selectedModelId,
-                      decoration: const InputDecoration(labelText: "Model", border: OutlineInputBorder()),
-                      items: const [
-                        DropdownMenuItem(value: "deepseek-coder-1.3b-base", child: Text("DeepSeek Coder 1.3B")),
-                        DropdownMenuItem(value: "mistral-7b-instruct", child: Text("Mistral 7B Instruct")),
-                        DropdownMenuItem(value: "gemma-2b-it", child: Text("Gemma 2B IT")),
-                        DropdownMenuItem(value: "phi-2", child: Text("Phi-2")),
-                      ],
-                      onChanged: (val) => setState(() => selectedModelId = val ?? ""),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(children: [
-                      Expanded(child: Text("Context Length: $contextLength tokens")),
-                      Slider(
-                        value: contextLength.toDouble(),
-                        min: 512,
-                        max: 8192,
-                        divisions: 15,
-                        label: "$contextLength",
-                        onChanged: (val) => setState(() => contextLength = val.toInt()),
-                      ),
-                    ]),
-                    Row(children: [
-                      Expanded(child: Text("Temperature: ${temperature.toStringAsFixed(1)}")),
-                      Slider(
-                        value: temperature,
-                        min: 0.0,
-                        max: 2.0,
-                        divisions: 20,
-                        label: temperature.toStringAsFixed(1),
-                        onChanged: (val) => setState(() => temperature = val),
-                      ),
-                    ]),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, style: Theme.of(context).textTheme.titleMedium),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 3),
+                    Text(subtitle!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textSecondary)),
                   ],
-                ),
+                ]),
               ),
-            ),
-            const SizedBox(height: 32),
-
-            // ------------------------------------------------- Privacy Settings
-            _sectionTitle(context, "Privacy & Security"),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SwitchListTile(
-                      title: const Text("Enable Data Retention"),
-                      subtitle: const Text("Store conversations locally"),
-                      value: dataRetentionEnabled,
-                      onChanged: (val) => setState(() => dataRetentionEnabled = val),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.delete_outline, color: AppColors.danger),
-                      title: const Text("Clear All Local Data"),
-                      subtitle: const Text("Delete conversations, documents, and cached data"),
-                      onTap: () => _showClearDataDialog(context),
-                    ),
-                    if (showEncryptionStatus)
-                      ListTile(
-                        leading: const Icon(Icons.lock_outline, color: AppColors.success),
-                        title: const Text("Encryption Status"),
-                        subtitle: const Text("Database encrypted at rest (SQLCipher)"),
-                        trailing: const Icon(Icons.check_circle, color: AppColors.success, size: 20),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // ------------------------------------------------- Search Filters
-            _sectionTitle(context, "Search Filters"),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Domain Whitelist", style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    const Text("Research is restricted to verified government, academic, and legal domains.",
-                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                    const SizedBox(height: 12),
-                    Wrap(spacing: 8, runSpacing: 8, children: [
-                      _domainChip("gov"),
-                      _domainChip("edu"),
-                      _domainChip("court.gov"),
-                      _domainChip("bar.org"),
-                      _domainChip("loc.gov"),
-                      _domainChip("congress.gov"),
-                    ]),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.add, size: 16),
-                      label: const Text("Add Domain"),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // ------------------------------------------------- Tool Connections
-            _sectionTitle(context, "Tool Connections"),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _toolConnectionTile(
-                      provider: "Gmail",
-                      icon: Icons.email_outlined,
-                      connected: false,
-                      onConnect: () => _connectTool(context, "gmail"),
-                    ),
-                    const Divider(),
-                    _toolConnectionTile(
-                      provider: "Outlook",
-                      icon: Icons.email_outlined,
-                      connected: false,
-                      onConnect: () => _connectTool(context, "outlook"),
-                    ),
-                    const Divider(),
-                    _toolConnectionTile(
-                      provider: "Google Calendar",
-                      icon: Icons.calendar_today_outlined,
-                      connected: false,
-                      onConnect: () => _connectTool(context, "google_calendar"),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // ------------------------------------------------- Appearance
-            _sectionTitle(context, "Appearance"),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SegmentedButton<ThemeMode>(
-                      segments: const [
-                        ButtonSegment(value: ThemeMode.light, label: Text("Light"), icon: const Icon(Icons.light_mode)),
-                        ButtonSegment(value: ThemeMode.dark, label: Text("Dark"), icon: const Icon(Icons.dark_mode)),
-                        ButtonSegment(value: ThemeMode.system, label: Text("System"), icon: const Icon(Icons.settings_suggest)),
-                      ],
-                      selected: {appTheme},
-                      onSelectionChanged: (set) => setState(() => appTheme = set.first),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(children: [
-                      Expanded(child: Text("Font Size: ${fontSize.toStringAsFixed(0)}px")),
-                      Slider(
-                        value: fontSize,
-                        min: 10.0,
-                        max: 20.0,
-                        divisions: 10,
-                        label: "${fontSize.toInt()}",
-                        onChanged: (val) => setState(() => fontSize = val),
-                      ),
-                    ]),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // ------------------------------------------------- Auto-Update
-            _sectionTitle(context, "Updates"),
-            Card(
-              child: SwitchListTile(
-                title: const Text("Auto-Update"),
-                subtitle: const Text("Automatically check for and install updates"),
-                value: autoUpdateEnabled,
-                onChanged: (val) => setState(() => autoUpdateEnabled = val),
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // ------------------------------------------------- About
-            _sectionTitle(context, "About"),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text("Counsel AI", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                    const SizedBox(height: 4),
-                    const Text("Version 1.0.0", style: TextStyle(color: AppColors.textSecondary)),
-                    const SizedBox(height: 16),
-                    ListTile(
-                      leading: const Icon(Icons.description_outlined),
-                      title: const Text("Licenses & Attributions"),
-                      onTap: () => _openLicenses(context),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.help_outline),
-                      title: const Text("Help & Documentation"),
-                      onTap: () => _openHelp(context),
-                    ),
-                    ListTile(
-                      leading: const Icon(Icons.bug_report_outlined),
-                      title: const Text("Report an Issue"),
-                      onTap: () => _reportIssue(context),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 40),
-            Center(child: Text("Counsel AI MVP · local-first by design", style: Theme.of(context).textTheme.labelSmall)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _sectionTitle(BuildContext context, String title) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: Text(title, style: Theme.of(context).textTheme.titleMedium),
-      );
-
-  Widget _domainChip(String domain) => Chip(
-    avatar: const Icon(Icons.public, size: 14),
-    label: Text(domain),
-    onDeleted: () {},
-    deleteIcon: const Icon(Icons.close, size: 14),
-  );
-
-  Widget _toolConnectionTile({
-    required String provider,
-    required IconData icon,
-    required bool connected,
-    required VoidCallback onConnect,
-  }) => ListTile(
-    leading: Icon(icon, color: connected ? AppColors.success : AppColors.textSecondary),
-    title: Text(provider),
-    subtitle: Text(connected ? "Connected" : "Not connected", 
-        style: TextStyle(color: connected ? AppColors.success : AppColors.textSecondary, fontSize: 12)),
-    trailing: connected
-        ? OutlinedButton(
-            onPressed: () {},
-            style: OutlinedButton.styleFrom(foregroundColor: AppColors.danger),
-            child: const Text("Disconnect"),
-          )
-        : FilledButton.tonal(onPressed: onConnect, child: const Text("Connect")),
-  );
-
-  void _showClearDataDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Clear All Data?"),
-        content: const Text("This will permanently delete all conversations, documents, and cached data. This action cannot be undone."),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () {
-              // TODO: Implement clear data
-              Navigator.pop(ctx);
-            },
-            child: const Text("Clear"),
+            ],
           ),
-        ],
+          const SizedBox(height: 18),
+          child,
+        ]),
       ),
     );
   }
+}
 
-  void _connectTool(BuildContext context, String provider) {
-    // TODO: Implement OAuth flow
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Connecting to $provider... (OAuth flow to be implemented)")),
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.connected, required this.label});
+  final bool connected;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = connected ? AppColors.success : AppColors.warning;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.circle, size: 8, color: color),
+        const SizedBox(width: 7),
+        Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.icon, required this.text, this.color});
+  final IconData icon;
+  final String text;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color ?? AppColors.textSecondary),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: Theme.of(context).textTheme.bodyMedium)),
+        ],
+      );
+}
+
+class _ActionRow extends StatelessWidget {
+  const _ActionRow({required this.icon, required this.title, required this.subtitle, required this.onTap});
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(icon, size: 19, color: AppColors.textSecondary),
+        title: Text(title),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.open_in_new, size: 17),
+        onTap: onTap,
+      );
+}
+
+class _IntegrationRow extends StatelessWidget {
+  const _IntegrationRow({
+    required this.label,
+    required this.provider,
+    required this.icon,
+    required this.state,
+    required this.enabled,
+  });
+
+  final String label;
+  final String provider;
+  final IconData icon;
+  final AppState state;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    ToolConnection? connection;
+    for (final item in state.toolConnections) {
+      if (item.provider == provider) {
+        connection = item;
+        break;
+      }
+    }
+    final isConnected = connection?.isConnected == true;
+
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, size: 20, color: isConnected ? AppColors.success : AppColors.textSecondary),
+      title: Text(label),
+      subtitle: Text(
+        isConnected
+            ? (connection?.userEmail?.isNotEmpty == true ? connection!.userEmail! : "Connected")
+            : enabled
+                ? "Not connected"
+                : "Sign in to connect",
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: isConnected
+          ? OutlinedButton(
+              onPressed: () async {
+                try {
+                  await state.disconnectTool(provider);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label disconnected.")));
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Could not disconnect: $e")));
+                  }
+                }
+              },
+              child: const Text("Disconnect"),
+            )
+          : FilledButton.tonal(
+              onPressed: enabled ? () => _connect(context) : null,
+              child: const Text("Connect"),
+            ),
     );
   }
 
-  void _openLicenses(BuildContext context) {
-    // Open licenses page or external URL
-    launchUrl(Uri.parse("https://github.com/counsel-ai/counsel-ai/blob/main/docs/LICENSES.md"));
+  Future<void> _connect(BuildContext context) async {
+    try {
+      final authUrl = await state.initiateToolConnection(provider);
+      final opened = await launchUrl(Uri.parse(authUrl), mode: LaunchMode.externalApplication);
+      if (!opened) throw Exception("The authorization page could not be opened.");
+
+      if (!context.mounted) return;
+      final code = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => _CodeDialog(provider: label),
+      );
+      if (code == null || code.trim().isEmpty || !context.mounted) return;
+
+      await state.completeToolConnection(provider, code.trim());
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$label connected.")));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Connection failed: $e")));
+      }
+    }
+  }
+}
+
+class _CodeDialog extends StatefulWidget {
+  const _CodeDialog({required this.provider});
+  final String provider;
+
+  @override
+  State<_CodeDialog> createState() => _CodeDialogState();
+}
+
+class _CodeDialogState extends State<_CodeDialog> {
+  final controller = TextEditingController();
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
   }
 
-  void _openHelp(BuildContext context) {
-    launchUrl(Uri.parse("https://github.com/counsel-ai/counsel-ai/blob/main/docs/USER_MANUAL.md"));
-  }
-
-  void _reportIssue(BuildContext context) {
-    launchUrl(Uri.parse("https://github.com/counsel-ai/counsel-ai/issues"));
-  }
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text("Finish ${widget.provider} connection"),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: "Authorization code",
+            hintText: "Paste the code returned by the provider",
+          ),
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          FilledButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text("Complete")),
+        ],
+      );
 }
